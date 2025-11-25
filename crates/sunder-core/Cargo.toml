@@ -1,0 +1,28 @@
+[package]
+name = "sunder-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sunder-proto = { path = "../sunder-proto" }
+
+# Async traits (no runtime dependency)
+async-trait = "0.1"
+
+# Time and duration
+tokio = { version = "1", default-features = false, features = ["io-util", "time"] }
+
+# Error handling
+thiserror = "2.0"
+
+[dev-dependencies]
+# Property-based testing
+proptest = "1.5"
+
+# Snapshot testing
+insta = "1.41"
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "sunder-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sunder-core = { path = "../sunder-core" }
+sunder-proto = { path = "../sunder-proto" }
+
+# Async trait support
+async-trait = "0.1"
+
+# Deterministic simulation
+turmoil = "0.6"
+
+# Async runtime (minimal features, turmoil provides the runtime)
+tokio = { version = "1", default-features = false, features = ["io-util", "macros", "time"] }
+
+# Seeded RNG for determinism
+rand = "0.8"
+
+[dev-dependencies]
+# For test assertions
+bytes = "1.9"
+
+[lints]
+workspace = true
