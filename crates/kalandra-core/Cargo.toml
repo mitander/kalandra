@@ -9,6 +9,11 @@ rust-version.workspace = true
 kalandra-proto = { path = "../kalandra-proto" }
 bincode = "1.3"
 
+# Serialization (for storage)
+serde = { version = "1.0", features = ["derive"] }
+ciborium = "0.2"
+bytes = "1.11"
+
 # Async traits (no runtime dependency)
 async-trait = "0.1"
 

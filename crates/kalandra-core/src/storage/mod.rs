@@ -1,0 +1,67 @@
+//! Storage abstraction for Kalandra protocol
+//!
+//! This module provides a trait-based abstraction for persisting frames and MLS
+//! state. The trait is synchronous (no async) to maintain Sans-IO compliance.
+
+mod error;
+mod memory;
+
+pub use error::StorageError;
+use kalandra_proto::Frame;
+pub use memory::MemoryStorage;
+
+use crate::mls::MlsGroupState;
+
+/// Storage abstraction for frames and MLS group state
+///
+/// This trait must be:
+/// - Clone: Can be passed to multiple state machines
+/// - Send + Sync: Thread-safe for concurrent access
+/// - Synchronous: No async methods (Sans-IO compliance)
+///
+/// Implementations should use internal Arc/Mutex for shared state.
+pub trait Storage: Clone + Send + Sync + 'static {
+    /// Store a frame in the room's log at the given index
+    ///
+    /// # Invariants
+    ///
+    /// - **Pre**: `log_index` must equal the current length of the room's log
+    /// - **Post**: Frame is persisted at `log_index`
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageError::Conflict` if `log_index` doesn't match expected
+    /// position (i.e., there's a gap in the sequence).
+    fn store_frame(&self, room_id: u128, log_index: u64, frame: &Frame)
+    -> Result<(), StorageError>;
+
+    /// Get the latest log index for a room
+    ///
+    /// Returns `None` if the room doesn't exist or has no frames.
+    fn latest_log_index(&self, room_id: u128) -> Result<Option<u64>, StorageError>;
+
+    /// Load frames from a room's log
+    ///
+    /// Returns frames in range `[from, from+limit)`.
+    /// If fewer than `limit` frames exist, returns all available frames.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageError::NotFound` if the room doesn't exist.
+    fn load_frames(
+        &self,
+        room_id: u128,
+        from: u64,
+        limit: usize,
+    ) -> Result<Vec<Frame>, StorageError>;
+
+    /// Store MLS group state for a room
+    ///
+    /// Overwrites any existing state for this room.
+    fn store_mls_state(&self, room_id: u128, state: &MlsGroupState) -> Result<(), StorageError>;
+
+    /// Load MLS group state for a room
+    ///
+    /// Returns `None` if no state exists for this room.
+    fn load_mls_state(&self, room_id: u128) -> Result<Option<MlsGroupState>, StorageError>;
+}

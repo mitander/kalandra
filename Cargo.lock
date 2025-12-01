@@ -724,6 +724,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bincode",
+ "bytes",
+ "ciborium",
  "hex",
  "insta",
  "kalandra-proto",
@@ -734,6 +736,7 @@ dependencies = [
  "openmls_traits",
  "proptest",
  "rand 0.8.5",
+ "serde",
  "thiserror",
  "tokio",
 ]

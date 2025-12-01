@@ -257,6 +257,31 @@ impl FrameHeader {
     pub fn signature(&self) -> &[u8; 64] {
         &self.signature
     }
+
+    // Setter methods (for server sequencing and testing)
+
+    /// Set the room ID
+    pub fn set_room_id(&mut self, room_id: u128) {
+        self.room_id = room_id.to_be_bytes();
+    }
+
+    /// Set the log index (for server sequencing)
+    ///
+    /// This method is used by the sequencer to assign monotonic log indices
+    /// to frames after validation.
+    pub fn set_log_index(&mut self, log_index: u64) {
+        self.log_index = log_index.to_be_bytes();
+    }
+
+    /// Set the sender ID
+    pub fn set_sender_id(&mut self, sender_id: u64) {
+        self.sender_id = sender_id.to_be_bytes();
+    }
+
+    /// Set the epoch
+    pub fn set_epoch(&mut self, epoch: u64) {
+        self.epoch = epoch.to_be_bytes();
+    }
 }
 
 // Manual Debug implementation (can't derive due to packed repr)

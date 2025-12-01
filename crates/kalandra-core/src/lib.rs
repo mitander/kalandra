@@ -10,19 +10,19 @@
 //!
 //! ```text
 //!      ┌────────────────────────────┐
-//!      │ kalandra-core                │
+//!      │ kalandra-core              │
 //!      │ - State machines           │
 //!      │ - Protocol logic           │
 //!      │ - Cryptographic operations │
 //!      └────────────────────────────┘
 //!         ↓                      ↓
-//! ┌────────────────┐  ┌────────────────┐
-//! │ kalandra-harness │  │ kalandra-server  │
-//! │ (Turmoil)      │  │ (Quinn/Tokio)  │
-//! │ - Virtual time │  │ - Real network │
-//! │ - Seeded RNG   │  │ - System clock │
-//! │ - Fault inject │  │ - Production   │
-//! └────────────────┘  └────────────────┘
+//! ┌──────────────────┐  ┌─────────────────┐
+//! │ kalandra-harness │  │ kalandra-server │
+//! │ (Turmoil)        │  │ (Quinn/Tokio)   │
+//! │ - Virtual time   │  │ - Real network  │
+//! │ - Seeded RNG     │  │ - System clock  │
+//! │ - Fault inject   │  │ - Production    │
+//! └──────────────────┘  └─────────────────┘
 //! ```
 //!
 //! # Key Principles
@@ -37,6 +37,7 @@
 //!
 //! - [`connection`]: Connection state machine (handshake, heartbeat, timeout)
 //! - [`mls`]: MLS group state machine (proposals, commits, messages)
+//! - [`storage`]: Storage abstraction (frames, MLS state)
 //! - [`env`]: Environment abstraction (time, RNG)
 //! - [`transport`]: Transport abstraction (streams)
 //! - [`error`]: Connection error types
@@ -49,4 +50,5 @@ pub mod connection;
 pub mod env;
 pub mod error;
 pub mod mls;
+pub mod storage;
 pub mod transport;

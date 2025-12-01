@@ -7,8 +7,8 @@
 //! # Architecture
 //!
 //! - **`group`**: Client-side MLS group state machine
-//! - **`sequencer`**: Server-side ordering and conflict resolution
-//! - **`authority`**: Server moderation via External Commits
+//! - **`state`**: MLS group state for storage and validation
+//! - **`provider`**: OpenMLS provider integration
 //! - **`error`**: MLS-specific error types
 //!
 //! # Design Principles
@@ -21,7 +21,9 @@
 pub mod error;
 pub mod group;
 pub mod provider;
+pub mod state;
 
 pub use error::MlsError;
 pub use group::{MemberId, MlsAction, MlsGroup, RoomId};
 pub use provider::MlsProvider;
+pub use state::MlsGroupState;
