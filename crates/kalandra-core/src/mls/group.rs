@@ -190,17 +190,6 @@ impl<E: Environment> MlsGroup<E> {
     /// This function processes an MLS protocol message, updates the group
     /// state, and returns any actions that need to be taken as a result.
     ///
-    /// # Arguments
-    ///
-    /// * `frame` - The MLS message frame from the sequencer
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `MlsAction` that should be executed by the caller:
-    /// - `DeliverMessage` for decrypted application messages
-    /// - `Log` for state transitions
-    /// - `RemoveGroup` if we were removed from the group
-    ///
     /// # Errors
     ///
     /// Returns an error if:
@@ -277,14 +266,6 @@ impl<E: Environment> MlsGroup<E> {
     /// This encrypts a plaintext message using the current epoch's encryption
     /// key and returns a frame ready to send to the sequencer.
     ///
-    /// # Arguments
-    ///
-    /// * `plaintext` - The message content to encrypt
-    ///
-    /// # Returns
-    ///
-    /// Returns `MlsAction::SendMessage` with the encrypted frame
-    ///
     /// # Errors
     ///
     /// Returns an error if encryption fails or the group is not active.
@@ -314,16 +295,6 @@ impl<E: Environment> MlsGroup<E> {
     /// This creates a commit that adds the specified members to the group.
     /// The commit must be sent to the sequencer and will advance the epoch
     /// when accepted.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_packages` - KeyPackages of members to add
-    ///
-    /// # Returns
-    ///
-    /// Returns actions including:
-    /// - `SendCommit` with the commit frame
-    /// - `SendWelcome` for each new member
     ///
     /// # Errors
     ///

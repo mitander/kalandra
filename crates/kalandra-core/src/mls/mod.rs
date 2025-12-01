@@ -22,8 +22,11 @@ pub mod error;
 pub mod group;
 pub mod provider;
 pub mod state;
+/// Frame validation for server sequencing
+pub mod validator;
 
 pub use error::MlsError;
 pub use group::{MemberId, MlsAction, MlsGroup, RoomId};
 pub use provider::MlsProvider;
 pub use state::MlsGroupState;
+pub use validator::{MlsValidator, ValidationResult};
