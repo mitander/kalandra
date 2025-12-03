@@ -3,9 +3,11 @@
 //! This module provides a trait-based abstraction for persisting frames and MLS
 //! state. The trait is synchronous (no async) to maintain Sans-IO compliance.
 
+mod chaotic;
 mod error;
 mod memory;
 
+pub use chaotic::ChaoticStorage;
 pub use error::StorageError;
 use kalandra_proto::Frame;
 pub use memory::MemoryStorage;

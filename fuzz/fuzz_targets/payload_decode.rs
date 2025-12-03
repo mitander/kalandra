@@ -10,9 +10,9 @@
 
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
-use kalandra_proto::{Frame, FrameHeader, Opcode, Payload};
 use bytes::Bytes;
+use kalandra_proto::{Frame, FrameHeader, Opcode, Payload};
+use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     // We need a valid frame header to test payload decoding
