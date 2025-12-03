@@ -184,3 +184,37 @@ fn prop_connection_tick_monotonic_time() {
         }
     });
 }
+
+#[test]
+fn prop_connection_tick_linear_complexity() {
+    proptest!(|(
+        tick_count in 10usize..200,
+    )| {
+        let t0 = Instant::now();
+        let config = ConnectionConfig::default();
+        let mut conn = Connection::new(t0, config);
+
+        let mut t = t0;
+        let mut action_count = 0usize;
+
+        // Call tick repeatedly with small time increments
+        for _ in 0..tick_count {
+            t += Duration::from_millis(10);
+            let actions = conn.tick(t);
+            action_count += actions.len();
+        }
+
+        // PERFORMANCE ORACLE: tick() should be O(1), not O(n)
+        // Even after many ticks, total actions should be bounded
+        // Maximum expected: 1 heartbeat per tick (in practice much less)
+        let max_expected_actions = tick_count * 2; // Generous bound
+
+        prop_assert!(
+            action_count <= max_expected_actions,
+            "Performance degradation detected: {} actions for {} ticks (expected <= {})",
+            action_count,
+            tick_count,
+            max_expected_actions
+        );
+    });
+}

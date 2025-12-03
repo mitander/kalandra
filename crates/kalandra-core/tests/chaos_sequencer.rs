@@ -148,6 +148,9 @@ fn prop_sequencer_never_creates_gaps() {
         let validator = MlsValidator;
         let mut sequencer = Sequencer::new();
 
+        // Track storage operations for performance oracle
+        let mut attempt_count = 0usize;
+
         // Create frames for single room with incrementing epochs
         for i in 0..frame_count {
             let mut header = FrameHeader::new(Opcode::AppMessage);
@@ -158,6 +161,7 @@ fn prop_sequencer_never_creates_gaps() {
 
             let frame = Frame::new(header, Bytes::from(vec![i as u8]));
 
+            attempt_count += 1;
             let _ = sequencer.process_frame(frame, &storage, &validator);
         }
 
@@ -181,6 +185,20 @@ fn prop_sequencer_never_creates_gaps() {
                 frames.len() as u64,
                 latest + 1,
                 "Frame count must match latest index + 1"
+            );
+
+            // PERFORMANCE ORACLE: Each frame requires O(1) operations
+            // Even with failures, total work should be O(n) not O(n²)
+            // We expect at most 3 storage ops per attempt: load_mls_state, store_frame, store_mls_state
+            let max_expected_ops = attempt_count * 3;
+            let actual_ops = storage.operation_count();
+
+            prop_assert!(
+                actual_ops <= max_expected_ops,
+                "Performance degradation detected: {} ops for {} attempts (max expected: {})",
+                actual_ops,
+                attempt_count,
+                max_expected_ops
             );
         }
     });

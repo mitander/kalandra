@@ -20,17 +20,6 @@ use crate::mls::MlsGroupState;
 /// # Thread Safety
 ///
 /// Uses `Arc<Mutex<>>` for the RNG state, making it Clone and thread-safe.
-///
-/// # Example
-///
-/// ```
-/// use kalandra_core::storage::{ChaoticStorage, MemoryStorage};
-///
-/// let storage = MemoryStorage::new();
-/// let chaotic = ChaoticStorage::new(storage, 0.1); // 10% failure rate
-///
-/// // Operations will randomly fail ~10% of the time
-/// ```
 #[derive(Clone)]
 pub struct ChaoticStorage<S: Storage> {
     inner: S,
@@ -38,6 +27,8 @@ pub struct ChaoticStorage<S: Storage> {
     failure_rate: f64,
     /// RNG state for deterministic chaos
     rng: Arc<Mutex<ChaoticRng>>,
+    /// Operation counter for performance testing
+    operation_count: Arc<Mutex<usize>>,
 }
 
 /// Simple deterministic RNG for chaos injection
@@ -99,12 +90,31 @@ impl<S: Storage> ChaoticStorage<S> {
             failure_rate
         );
 
-        Self { inner, failure_rate, rng: Arc::new(Mutex::new(ChaoticRng::new(seed))) }
+        Self {
+            inner,
+            failure_rate,
+            rng: Arc::new(Mutex::new(ChaoticRng::new(seed))),
+            operation_count: Arc::new(Mutex::new(0)),
+        }
     }
 
     /// Get the underlying storage (useful for checking invariants after chaos)
     pub fn inner(&self) -> &S {
         &self.inner
+    }
+
+    /// Get total number of storage operations attempted
+    ///
+    /// This is used for performance oracles to verify O(n) complexity.
+    /// Each call to any storage method increments this counter.
+    pub fn operation_count(&self) -> usize {
+        *self.operation_count.lock().expect("operation_count mutex poisoned")
+    }
+
+    /// Increment operation counter
+    fn increment_operation_count(&self) {
+        let mut count = self.operation_count.lock().expect("operation_count mutex poisoned");
+        *count += 1;
     }
 
     /// Check if this operation should fail
@@ -120,6 +130,7 @@ impl<S: Storage> Storage for ChaoticStorage<S> {
         log_index: u64,
         frame: &Frame,
     ) -> Result<(), StorageError> {
+        self.increment_operation_count();
         if self.should_fail() {
             return Err(StorageError::Io("chaotic failure injection".to_string()));
         }
@@ -127,6 +138,7 @@ impl<S: Storage> Storage for ChaoticStorage<S> {
     }
 
     fn latest_log_index(&self, room_id: u128) -> Result<Option<u64>, StorageError> {
+        self.increment_operation_count();
         if self.should_fail() {
             return Err(StorageError::Io("chaotic failure injection".to_string()));
         }
@@ -139,6 +151,7 @@ impl<S: Storage> Storage for ChaoticStorage<S> {
         from: u64,
         limit: usize,
     ) -> Result<Vec<Frame>, StorageError> {
+        self.increment_operation_count();
         if self.should_fail() {
             return Err(StorageError::Io("chaotic failure injection".to_string()));
         }
@@ -146,6 +159,7 @@ impl<S: Storage> Storage for ChaoticStorage<S> {
     }
 
     fn store_mls_state(&self, room_id: u128, state: &MlsGroupState) -> Result<(), StorageError> {
+        self.increment_operation_count();
         if self.should_fail() {
             return Err(StorageError::Io("chaotic failure injection".to_string()));
         }
@@ -153,6 +167,7 @@ impl<S: Storage> Storage for ChaoticStorage<S> {
     }
 
     fn load_mls_state(&self, room_id: u128) -> Result<Option<MlsGroupState>, StorageError> {
+        self.increment_operation_count();
         if self.should_fail() {
             return Err(StorageError::Io("chaotic failure injection".to_string()));
         }

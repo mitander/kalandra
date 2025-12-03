@@ -26,5 +26,8 @@ rand_chacha = "0.3"
 # For test assertions
 bytes = "1.9"
 
+# Property-based testing
+proptest = "1.5"
+
 [lints]
 workspace = true
