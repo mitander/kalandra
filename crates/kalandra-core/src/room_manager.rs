@@ -33,9 +33,9 @@ use kalandra_proto::Frame;
 
 use crate::{
     env::Environment,
-    mls::{error::MlsError, group::MlsGroup, state::MlsGroupState},
-    sequencer::{Sequencer, SequencerError},
-    storage::StorageError,
+    mls::{MlsValidator, error::MlsError, group::MlsGroup, state::MlsGroupState},
+    sequencer::{Sequencer, SequencerAction, SequencerError},
+    storage::{Storage, StorageError},
 };
 
 /// Metadata about a room (extension point for future authorization)
@@ -56,7 +56,6 @@ where
     /// Per-room MLS group state
     groups: HashMap<u128, MlsGroup<E>>,
     /// Frame sequencer (assigns log indices)
-    #[allow(dead_code)] // Will be used in Task 2.3
     sequencer: Sequencer,
     /// Room metadata (for future authorization)
     room_metadata: HashMap<u128, RoomMetadata<E::Instant>>,
@@ -140,51 +139,13 @@ where
         self.room_metadata.contains_key(&room_id)
     }
 
-    /// Create a new room with authorization metadata
-    ///
     /// Creates a room with the specified ID and records the creator for
     /// future authorization checks. Prevents duplicate room creation.
-    ///
-    /// # Arguments
-    ///
-    /// * `room_id` - Unique identifier for the room (128-bit)
-    /// * `creator` - User ID of the room creator
-    /// * `env` - Environment for time and crypto operations
-    ///
-    /// # Invariants
-    ///
-    /// - **Pre:** `!self.has_room(room_id)`
-    /// - **Post:** `self.has_room(room_id) == true`
-    /// - **Post:** `self.room_metadata[room_id].creator == creator`
     ///
     /// # Errors
     ///
     /// Returns `RoomError::RoomAlreadyExists` if the room ID already exists.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use kalandra_core::room_manager::{RoomManager, RoomError};
-    /// # use kalandra_core::env::Environment;
-    /// # #[derive(Clone)]
-    /// # struct TestEnv;
-    /// # impl Environment for TestEnv {
-    /// #     type Instant = std::time::Instant;
-    /// #     fn now(&self) -> Self::Instant { std::time::Instant::now() }
-    /// #     fn sleep(&self, d: std::time::Duration) -> impl std::future::Future<Output = ()> + Send { async move { tokio::time::sleep(d).await } }
-    /// #     fn random_bytes(&self, buffer: &mut [u8]) { use rand::RngCore; rand::thread_rng().fill_bytes(buffer); }
-    /// # }
-    /// let env = TestEnv;
-    /// let mut manager = RoomManager::new();
-    /// let room_id = 0x1234_5678_90ab_cdef_1234_5678_90ab_cdef;
-    /// let creator = 42;
-    ///
-    /// manager.create_room(room_id, creator, &env)?;
-    /// assert!(manager.has_room(room_id));
-    /// # Ok::<(), RoomError>(())
-    /// ```
     pub fn create_room(&mut self, room_id: u128, creator: u64, env: &E) -> Result<(), RoomError> {
-        // Prevent duplicate rooms
         if self.has_room(room_id) {
             return Err(RoomError::RoomAlreadyExists(room_id));
         }
@@ -204,7 +165,62 @@ where
         Ok(())
     }
 
-    // process_frame() will be added in Task 2.3
+    /// Process a frame through MLS validation and sequencing
+    ///
+    /// This method orchestrates the full frame processing pipeline:
+    /// 1. Verify room exists (no lazy creation)
+    /// 2. Delegate to Sequencer which handles MLS validation and sequencing
+    /// 3. Convert SequencerAction to RoomAction
+    /// 4. Return actions for driver to execute
+    ///
+    /// # Errors
+    ///
+    /// Returns `RoomError::RoomNotFound` if room doesn't exist.
+    /// Returns `RoomError::MlsValidation` if frame fails validation.
+    /// Returns `RoomError::Sequencing` if sequencer encounters an error.
+    pub fn process_frame(
+        &mut self,
+        frame: Frame,
+        storage: &impl Storage,
+    ) -> Result<Vec<RoomAction>, RoomError> {
+        // 1. Room must exist (no lazy creation)
+        let room_id = frame.header.room_id();
+        if !self.has_room(room_id) {
+            return Err(RoomError::RoomNotFound(room_id));
+        }
+
+        // 2. Delegate to Sequencer (which handles MLS validation + sequencing)
+        let validator = MlsValidator;
+        let sequencer_actions = self.sequencer.process_frame(frame, storage, &validator)?;
+
+        // 3. Convert SequencerAction to RoomAction
+        let room_actions = sequencer_actions
+            .into_iter()
+            .map(|action| match action {
+                SequencerAction::AcceptFrame { room_id, log_index, frame } => {
+                    RoomAction::PersistFrame { room_id, log_index, frame }
+                },
+                SequencerAction::StoreFrame { room_id, log_index, frame } => {
+                    RoomAction::PersistFrame { room_id, log_index, frame }
+                },
+                SequencerAction::BroadcastToRoom { room_id, frame } => {
+                    RoomAction::Broadcast { room_id, frame, exclude_sender: false }
+                },
+                SequencerAction::RejectFrame { room_id: _, reason, original_frame } => {
+                    RoomAction::Reject { sender_id: original_frame.header.sender_id(), reason }
+                },
+            })
+            .collect();
+
+        // TODO: Update MLS state if this was a commit
+        // Currently the sequencer validates against MLS state but doesn't update it.
+        // We need to:
+        // 1. Check if frame is a Commit
+        // 2. Call group.apply_commit(&frame, env)
+        // 3. Return PersistMlsState action
+
+        Ok(room_actions)
+    }
 }
 
 impl<E> Default for RoomManager<E>

@@ -1,6 +1,11 @@
 //! Room Manager tests
 
-use kalandra_core::room_manager::{RoomError, RoomManager};
+use bytes::Bytes;
+use kalandra_core::{
+    room_manager::{RoomError, RoomManager},
+    storage::MemoryStorage,
+};
+use kalandra_proto::{Frame, FrameHeader, Opcode};
 
 // Test environment using system RNG (std::time::Instant)
 #[derive(Clone)]
@@ -87,4 +92,85 @@ fn create_multiple_rooms() {
     assert!(manager.has_room(room1));
     assert!(manager.has_room(room2));
     assert!(manager.has_room(room3));
+}
+
+#[test]
+fn process_frame_rejects_unknown_room() {
+    let mut manager = RoomManager::<TestEnv>::new();
+    let storage = MemoryStorage::new();
+
+    // Create a frame for a room that doesn't exist
+    let mut header = FrameHeader::new(Opcode::AppMessage);
+    header.set_room_id(0x9999_9999_9999_9999_9999_9999_9999_9999);
+    header.set_sender_id(42);
+    header.set_epoch(0);
+    let frame = Frame::new(header, Bytes::new());
+
+    let result = manager.process_frame(frame, &storage);
+    assert!(matches!(result, Err(RoomError::RoomNotFound(_))));
+}
+
+#[test]
+fn process_frame_succeeds_for_valid_frame() {
+    let env = TestEnv;
+    let mut manager = RoomManager::new();
+    let storage = MemoryStorage::new();
+
+    let room_id = 0x1234_5678_90ab_cdef_1234_5678_90ab_cdef;
+    let creator = 42;
+
+    // Create the room first
+    manager.create_room(room_id, creator, &env).unwrap();
+
+    // Create a valid frame
+    let mut header = FrameHeader::new(Opcode::AppMessage);
+    header.set_room_id(room_id);
+    header.set_sender_id(creator);
+    header.set_epoch(0);
+    let frame = Frame::new(header, Bytes::new());
+
+    let result = manager.process_frame(frame, &storage);
+    assert!(result.is_ok());
+
+    let actions = result.unwrap();
+    // Should have actions (AcceptFrame becomes PersistFrame, StoreFrame becomes
+    // PersistFrame, BroadcastToRoom becomes Broadcast) Sequencer returns 3
+    // actions: AcceptFrame, StoreFrame, BroadcastToRoom
+    assert!(!actions.is_empty());
+    assert_eq!(actions.len(), 3);
+}
+
+#[test]
+fn process_frame_returns_correct_action_types() {
+    let env = TestEnv;
+    let mut manager = RoomManager::new();
+    let storage = MemoryStorage::new();
+
+    let room_id = 0x1234_5678_90ab_cdef_1234_5678_90ab_cdef;
+    let creator = 42;
+
+    // Create the room first
+    manager.create_room(room_id, creator, &env).unwrap();
+
+    // Create a valid frame
+    let mut header = FrameHeader::new(Opcode::AppMessage);
+    header.set_room_id(room_id);
+    header.set_sender_id(creator);
+    header.set_epoch(0);
+    let frame = Frame::new(header, Bytes::from("test message"));
+
+    let result = manager.process_frame(frame, &storage);
+    assert!(result.is_ok());
+
+    let actions = result.unwrap();
+
+    // Verify we have the right action types
+    use kalandra_core::room_manager::RoomAction;
+
+    // First two should be PersistFrame (from AcceptFrame and StoreFrame)
+    assert!(matches!(actions[0], RoomAction::PersistFrame { .. }));
+    assert!(matches!(actions[1], RoomAction::PersistFrame { .. }));
+
+    // Last should be Broadcast (from BroadcastToRoom)
+    assert!(matches!(actions[2], RoomAction::Broadcast { .. }));
 }
