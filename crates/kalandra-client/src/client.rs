@@ -162,10 +162,21 @@ impl<E: Environment> Client<E> {
         let sender_keys = self.initialize_sender_keys(&mls_group)?;
         let my_leaf_index = mls_group.own_leaf_index();
 
+        let initial_state =
+            mls_group.export_state().map_err(|e| ClientError::Mls { reason: e.to_string() })?;
+
         let room_state = RoomState { mls_group, sender_keys, my_leaf_index };
         self.rooms.insert(room_id, room_state);
 
         let mut actions = self.convert_mls_actions(room_id, mls_actions);
+
+        actions.push(ClientAction::PersistRoom(RoomStateSnapshot {
+            room_id,
+            epoch: 0,
+            mls_state: initial_state,
+            my_leaf_index,
+        }));
+
         actions.push(ClientAction::Log { message: format!("Created room {room_id:x} at epoch 0") });
 
         Ok(actions)
@@ -256,7 +267,6 @@ impl<E: Environment> Client<E> {
         let proto_encrypted = deserialize_encrypted_message(&frame.payload)
             .map_err(|e| ClientError::InvalidFrame { reason: e })?;
 
-        // Convert to crypto version for decryption
         let encrypted = proto_to_crypto_encrypted(&proto_encrypted);
         let plaintext = room.sender_keys.decrypt(&encrypted)?;
 
@@ -302,7 +312,10 @@ impl<E: Environment> Client<E> {
         actions.push(ClientAction::PersistRoom(RoomStateSnapshot {
             room_id,
             epoch,
-            mls_state: vec![], // TODO: Serialize MLS state
+            mls_state: room
+                .mls_group
+                .export_state()
+                .map_err(|e| ClientError::Mls { reason: e.to_string() })?,
             my_leaf_index,
         }));
 

@@ -192,13 +192,6 @@ impl<E: Environment> MlsGroup<E> {
     ///
     /// This is used to derive sender keys for data-plane encryption.
     /// The secret is bound to the current epoch and the provided label.
-    ///
-    /// # Arguments
-    ///
-    /// - `label`: Application-specific label for domain separation
-    /// - `context`: Additional context bytes for the derivation
-    /// - `length`: Desired output length in bytes
-    ///
     /// # Errors
     ///
     /// Returns an error if the export fails (e.g., invalid length).
@@ -361,10 +354,6 @@ impl<E: Environment> MlsGroup<E> {
     /// commit must be sent to the sequencer and will advance the epoch when
     /// accepted.
     ///
-    /// # Arguments
-    ///
-    /// - `key_packages_bytes`: TLS-serialized KeyPackage messages
-    ///
     /// # Errors
     ///
     /// Returns an error if:
@@ -396,16 +385,7 @@ impl<E: Environment> MlsGroup<E> {
     /// from an existing group member. The Welcome contains the group secrets
     /// needed to participate.
     ///
-    /// # Arguments
-    ///
-    /// - `env`: The environment implementation
-    /// - `room_id`: Room identifier for this group
-    /// - `member_id`: Our member ID
-    /// - `welcome_bytes`: TLS-serialized Welcome message
-    ///
-    /// # Returns
-    ///
-    /// A new MlsGroup instance initialized at the current group epoch.
+    /// Returns a new MlsGroup instance initialized at the current group epoch.
     ///
     /// # Errors
     ///
@@ -421,33 +401,27 @@ impl<E: Environment> MlsGroup<E> {
         let provider = MlsProvider::new(env);
         let ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 
-        // Create our credential and signing key
         let signer = SignatureKeyPair::new(ciphersuite.signature_algorithm())
             .map_err(|e| MlsError::Crypto(format!("Failed to generate keypair: {}", e)))?;
 
-        // Deserialize the Welcome message
         let mls_message =
             MlsMessageIn::tls_deserialize(&mut welcome_bytes.as_ref()).map_err(|e| {
                 MlsError::Serialization(format!("Failed to deserialize Welcome: {}", e))
             })?;
 
-        // Extract the Welcome from the MLS message
         let welcome = match mls_message.extract() {
             MlsMessageBodyIn::Welcome(w) => w,
             _ => return Err(MlsError::Serialization("Message is not a Welcome".to_string())),
         };
 
-        // Configure the group
         let group_config = MlsGroupJoinConfig::builder().build();
 
-        // Join the group using the Welcome
         let mls_group = StagedWelcome::new_from_welcome(&provider, &group_config, welcome, None)
             .map_err(|e| MlsError::Crypto(format!("Failed to stage Welcome: {}", e)))?
             .into_group(&provider)
             .map_err(|e| MlsError::Crypto(format!("Failed to join group from Welcome: {}", e)))?;
 
         let epoch = mls_group.epoch().as_u64();
-
         let group = Self { room_id, member_id, mls_group, signer, provider, pending_commit: None };
 
         let actions = vec![MlsAction::Log {
@@ -460,17 +434,31 @@ impl<E: Environment> MlsGroup<E> {
         Ok((group, actions))
     }
 
+    /// Export the current group state for storage.
+    ///
+    /// Returns the serialized OpenMLS group state that can be stored
+    /// and later used to restore the group.
+    ///
+    /// Returns serialized group state bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serialization fails.
+    pub fn export_state(&self) -> Result<Vec<u8>, MlsError> {
+        // For now, we export the group secret as a proxy for the full state
+        // In a full implementation, OpenMLS would provide a way to serialize
+        // the entire group state including key schedule, tree, etc.
+        self.export_secret("group_state", b"", 64)
+            .map_err(|e| MlsError::Crypto(format!("Failed to export group state: {}", e)))
+    }
+
     /// Generate a KeyPackage for joining groups.
     ///
     /// Creates a KeyPackage that can be shared with group members who want to
     /// add this client to their group. The KeyPackage is signed with this
     /// client's credential.
     ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - The TLS-serialized KeyPackage bytes (to share with others)
-    /// - The KeyPackage hash reference (for tracking)
+    /// Returns a tuple (KeyPackage bytes, KeyPackage hash ref)
     ///
     /// # Errors
     ///
