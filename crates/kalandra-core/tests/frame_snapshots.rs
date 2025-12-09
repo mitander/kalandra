@@ -129,9 +129,11 @@ fn snapshot_pong_frame() {
 #[test]
 fn snapshot_encrypted_message_frame() {
     let msg = Payload::AppMessage(EncryptedMessage {
-        ciphertext: vec![0xca, 0xfe, 0xba, 0xbe],
-        tag: [0x01; 16],
+        epoch: 1,
+        sender_index: 42,
+        generation: 0,
         nonce: [0x02; 24],
+        ciphertext: vec![0xca, 0xfe, 0xba, 0xbe],
         push_keys: None,
     });
 

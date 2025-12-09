@@ -14,18 +14,35 @@ use serde::{Deserialize, Serialize};
 ///
 /// - **Cipher**: XChaCha20-Poly1305 (24-byte nonce, 16-byte tag)
 /// - **Key Derivation**: Sender keys are derived from the MLS epoch secret
-/// - **Nonce**: Deterministically derived from `(epoch, sender_id, log_index)`
-///   to prevent reuse
+/// - **Nonce**: Deterministically derived from `(epoch, sender_index,
+///   generation)` plus random suffix to prevent reuse
+///
+/// # Sender Key Metadata
+///
+/// The `epoch`, `sender_index`, and `generation` fields are required for
+/// the receiver to derive the correct decryption key from their sender key
+/// ratchet state. These duplicate some header fields but are included in
+/// the CBOR payload for authenticated binding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncryptedMessage {
-    /// Ciphertext (encrypted by sender key)
-    pub ciphertext: Vec<u8>,
+    /// The MLS epoch this message was encrypted under.
+    /// Must match the epoch in the frame header.
+    pub epoch: u64,
 
-    /// Authentication tag (16 bytes for Poly1305)
-    pub tag: [u8; 16],
+    /// The sender's leaf index in the MLS tree.
+    /// Used to select the correct sender key ratchet.
+    pub sender_index: u32,
 
-    /// Nonce for XChaCha20 (24 bytes)
+    /// The ratchet generation (message counter for this sender).
+    /// Receivers advance their ratchet to this generation before decrypting.
+    pub generation: u32,
+
+    /// Nonce for XChaCha20 (24 bytes).
+    /// Structure: [epoch:8][sender_index:4][generation:4][random:8]
     pub nonce: [u8; 24],
+
+    /// Ciphertext including 16-byte Poly1305 authentication tag.
+    pub ciphertext: Vec<u8>,
 
     /// Optional: Push-Carried Ephemeral Keys (PCEK)
     ///
@@ -100,14 +117,37 @@ mod tests {
     #[test]
     fn encrypted_message_serde() {
         let msg = EncryptedMessage {
-            ciphertext: vec![1, 2, 3, 4],
-            tag: [0; 16],
+            epoch: 1,
+            sender_index: 42,
+            generation: 0,
             nonce: [0; 24],
+            ciphertext: vec![1, 2, 3, 4],
             push_keys: None,
         };
 
         let cbor = ciborium::ser::into_writer(&msg, Vec::new());
         assert!(cbor.is_ok());
+    }
+
+    #[test]
+    fn encrypted_message_round_trip() {
+        let original = EncryptedMessage {
+            epoch: 42,
+            sender_index: 7,
+            generation: 100,
+            nonce: [0xAB; 24],
+            ciphertext: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            push_keys: None,
+        };
+
+        // Encode to CBOR
+        let mut encoded = Vec::new();
+        ciborium::ser::into_writer(&original, &mut encoded).unwrap();
+
+        // Decode back
+        let decoded: EncryptedMessage = ciborium::de::from_reader(&encoded[..]).unwrap();
+
+        assert_eq!(original, decoded);
     }
 
     #[test]

@@ -3,14 +3,14 @@
 //! The `Client` is the top-level state machine that manages multiple room
 //! memberships and orchestrates MLS operations with sender key encryption.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use kalandra_core::{
     env::Environment,
     mls::{MlsAction, MlsGroup, RoomId},
 };
-use kalandra_crypto::{EncryptedMessage, NONCE_RANDOM_SIZE};
-use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_crypto::{EncryptedMessage as CryptoEncryptedMessage, NONCE_RANDOM_SIZE};
+use kalandra_proto::{Frame, FrameHeader, Opcode, payloads::app::EncryptedMessage};
 
 use crate::{
     error::ClientError,
@@ -26,6 +26,9 @@ const SENDER_KEY_CONTEXT: &[u8] = b"";
 
 /// Size of the sender key secret in bytes.
 const SENDER_KEY_SECRET_SIZE: usize = 32;
+
+/// Timeout for pending commits before requesting sync (30 seconds).
+const COMMIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Client identity.
 ///
@@ -103,6 +106,23 @@ impl<E: Environment> Client<E> {
         self.rooms.get(&room_id).map(|r| r.mls_group.epoch())
     }
 
+    /// Generate a KeyPackage for this client to join a room.
+    ///
+    /// The returned KeyPackage should be sent to the room creator who will
+    /// add this client via `AddMembers`. The caller is responsible for
+    /// keeping the KeyPackage until a Welcome message is received.
+    ///
+    /// Return a tuple of (serialized KeyPackage bytes, KeyPackage hash ref).
+    /// The hash reference can be used to track which KeyPackage was used.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if KeyPackage generation fails.
+    pub fn generate_key_package(&self) -> Result<(Vec<u8>, Vec<u8>), ClientError> {
+        MlsGroup::generate_key_package(self.env.clone(), self.identity.sender_id)
+            .map_err(|e| ClientError::Mls { reason: e.to_string() })
+    }
+
     /// Process an event and return resulting actions.
     ///
     /// # Errors
@@ -145,7 +165,7 @@ impl<E: Environment> Client<E> {
         let room_state = RoomState { mls_group, sender_keys, my_leaf_index };
         self.rooms.insert(room_id, room_state);
 
-        let mut actions = self.convert_mls_actions(mls_actions);
+        let mut actions = self.convert_mls_actions(room_id, mls_actions);
         actions.push(ClientAction::Log { message: format!("Created room {room_id:x} at epoch 0") });
 
         Ok(actions)
@@ -176,9 +196,10 @@ impl<E: Environment> Client<E> {
         let mut random_bytes = [0u8; NONCE_RANDOM_SIZE];
         self.env.random_bytes(&mut random_bytes);
 
-        let encrypted = room.sender_keys.encrypt(room.my_leaf_index, plaintext, random_bytes)?;
+        let crypto_encrypted =
+            room.sender_keys.encrypt(room.my_leaf_index, plaintext, random_bytes)?;
 
-        // TODO: CBOR serialization
+        let encrypted = crypto_to_proto_encrypted(&crypto_encrypted);
         let payload = serialize_encrypted_message(&encrypted);
 
         let mut header = FrameHeader::new(Opcode::AppMessage);
@@ -213,7 +234,7 @@ impl<E: Environment> Client<E> {
                     .process_message(frame)
                     .map_err(|e| ClientError::Mls { reason: e.to_string() })?;
 
-                Ok(self.convert_mls_actions(mls_actions))
+                Ok(self.convert_mls_actions(room_id, mls_actions))
             },
         }
     }
@@ -232,9 +253,11 @@ impl<E: Environment> Client<E> {
             return Err(ClientError::EpochMismatch { expected: room_epoch, actual: frame_epoch });
         }
 
-        let encrypted = deserialize_encrypted_message(&frame.payload)
+        let proto_encrypted = deserialize_encrypted_message(&frame.payload)
             .map_err(|e| ClientError::InvalidFrame { reason: e })?;
 
+        // Convert to crypto version for decryption
+        let encrypted = proto_to_crypto_encrypted(&proto_encrypted);
         let plaintext = room.sender_keys.decrypt(&encrypted)?;
 
         Ok(vec![ClientAction::DeliverMessage {
@@ -259,7 +282,7 @@ impl<E: Environment> Client<E> {
                 .map_err(|e| ClientError::Mls { reason: e.to_string() })?
         };
 
-        let mut actions = self.convert_mls_actions(mls_actions);
+        let mut actions = self.convert_mls_actions(room_id, mls_actions);
 
         // Re-derive sender keys for new epoch from MLS state
         // We need to export the secret while holding only an immutable borrow,
@@ -286,37 +309,72 @@ impl<E: Environment> Client<E> {
         Ok(actions)
     }
 
-    /// Handle MLS welcome (joining a room via received frame).
+    /// Handle incoming Welcome frame.
     ///
-    /// Note: Welcome processing requires pre-shared KeyPackage state.
-    /// This is not yet implemented - use `handle_join_room` when ready.
+    /// When we receive a Welcome message from another member (who added us),
+    /// we process it to join the group.
     fn handle_welcome(
         &mut self,
-        _room_id: RoomId,
-        _frame: Frame,
+        room_id: RoomId,
+        frame: Frame,
     ) -> Result<Vec<ClientAction>, ClientError> {
-        Err(ClientError::InvalidState {
-            reason: "Welcome frame processing requires KeyPackage management (not yet implemented)"
-                .to_string(),
-        })
+        if self.rooms.contains_key(&room_id) {
+            return Err(ClientError::RoomAlreadyExists { room_id });
+        }
+
+        let (mls_group, mls_actions) = MlsGroup::join_from_welcome(
+            self.env.clone(),
+            room_id,
+            self.identity.sender_id,
+            &frame.payload,
+        )
+        .map_err(|e| ClientError::Mls { reason: e.to_string() })?;
+
+        let sender_keys = self.initialize_sender_keys(&mls_group)?;
+        let my_leaf_index = mls_group.own_leaf_index();
+
+        let room_state = RoomState { mls_group, sender_keys, my_leaf_index };
+        self.rooms.insert(room_id, room_state);
+
+        let mut actions = self.convert_mls_actions(room_id, mls_actions);
+        actions.push(ClientAction::Log { message: format!("Joined room {room_id:x} via Welcome") });
+
+        Ok(actions)
     }
 
     /// Handle join room request via Welcome message.
     ///
-    /// Requires:
-    /// 1. Prior KeyPackage generation and sharing
-    /// 2. Welcome message from the adder
-    /// 3. KeyPackage bundle for decryption
-    ///
-    /// Not yet implemented - requires KeyPackage management.
+    /// This is the application-initiated join (via ClientEvent::JoinRoom).
+    /// The Welcome message should have been received out-of-band.
     fn handle_join_room(
         &mut self,
-        _room_id: RoomId,
-        _welcome: &[u8],
+        room_id: RoomId,
+        welcome: &[u8],
     ) -> Result<Vec<ClientAction>, ClientError> {
-        Err(ClientError::InvalidState {
-            reason: "Join room requires KeyPackage management (not yet implemented)".to_string(),
-        })
+        if self.rooms.contains_key(&room_id) {
+            return Err(ClientError::RoomAlreadyExists { room_id });
+        }
+
+        let (mls_group, mls_actions) = MlsGroup::join_from_welcome(
+            self.env.clone(),
+            room_id,
+            self.identity.sender_id,
+            welcome,
+        )
+        .map_err(|e| ClientError::Mls { reason: e.to_string() })?;
+
+        let sender_keys = self.initialize_sender_keys(&mls_group)?;
+        let my_leaf_index = mls_group.own_leaf_index();
+
+        let room_state = RoomState { mls_group, sender_keys, my_leaf_index };
+        self.rooms.insert(room_id, room_state);
+
+        let mut actions = self.convert_mls_actions(room_id, mls_actions);
+        actions.push(ClientAction::Log {
+            message: format!("Joined room {room_id:x} via JoinRoom event"),
+        });
+
+        Ok(actions)
     }
 
     /// Handle add members request.
@@ -334,13 +392,37 @@ impl<E: Environment> Client<E> {
             .add_members_from_bytes(&key_packages_bytes)
             .map_err(|e| ClientError::Mls { reason: e.to_string() })?;
 
-        Ok(self.convert_mls_actions(mls_actions))
+        Ok(self.convert_mls_actions(room_id, mls_actions))
     }
 
     /// Handle tick (timeout processing).
-    fn handle_tick(&mut self, _now: E::Instant) -> Result<Vec<ClientAction>, ClientError> {
-        // TODO: Check for commit timeouts, heartbeats, etc.
-        Ok(vec![])
+    ///
+    /// Checks all rooms for pending commits that have timed out.
+    /// For rooms with timed-out commits, emits `RequestSync` actions.
+    fn handle_tick(&mut self, now: E::Instant) -> Result<Vec<ClientAction>, ClientError>
+    where
+        E::Instant: Copy + Ord + std::ops::Sub<Output = std::time::Duration>,
+    {
+        let mut actions = Vec::new();
+
+        for (&room_id, room) in &self.rooms {
+            if room.mls_group.is_commit_timeout(now, COMMIT_TIMEOUT) {
+                let current_epoch = room.mls_group.epoch();
+                // Commit timed out, request sync from server to catch up
+                actions.push(ClientAction::RequestSync {
+                    room_id,
+                    from_epoch: current_epoch,
+                    to_epoch: current_epoch.saturating_add(1), // next commit
+                });
+                actions.push(ClientAction::Log {
+                    message: format!(
+                        "Commit timeout in room {room_id:x}, requesting sync from epoch {current_epoch}"
+                    ),
+                });
+            }
+        }
+
+        Ok(actions)
     }
 
     /// Handle leaving a room.
@@ -353,7 +435,11 @@ impl<E: Environment> Client<E> {
     }
 
     /// Convert MLS actions to client actions.
-    fn convert_mls_actions(&self, mls_actions: Vec<MlsAction>) -> Vec<ClientAction> {
+    fn convert_mls_actions(
+        &self,
+        room_id: RoomId,
+        mls_actions: Vec<MlsAction>,
+    ) -> Vec<ClientAction> {
         mls_actions
             .into_iter()
             .filter_map(|action| match action {
@@ -364,60 +450,56 @@ impl<E: Environment> Client<E> {
                 MlsAction::DeliverMessage { sender, plaintext } => {
                     // MLS-decrypted message don't use sender keys path
                     Some(ClientAction::DeliverMessage {
-                        room_id: 0, // TODO: Track room context
+                        room_id,
                         sender_id: sender,
                         plaintext,
                         log_index: 0,
                         timestamp: 0,
                     })
                 },
-                MlsAction::RemoveGroup { reason } => Some(ClientAction::RoomRemoved {
-                    room_id: 0, // TODO: Track room context
-                    reason,
-                }),
+                MlsAction::RemoveGroup { reason } => {
+                    Some(ClientAction::RoomRemoved { room_id, reason })
+                },
                 MlsAction::Log { message } => Some(ClientAction::Log { message }),
             })
             .collect()
     }
 }
 
-// Placeholder serialization - will be replaced with proper CBOR
+// Convert from crypto EncryptedMessage to proto EncryptedMessage
+fn crypto_to_proto_encrypted(crypto: &CryptoEncryptedMessage) -> EncryptedMessage {
+    EncryptedMessage {
+        epoch: crypto.epoch,
+        sender_index: crypto.sender_index,
+        generation: crypto.generation,
+        nonce: crypto.nonce,
+        ciphertext: crypto.ciphertext.clone(),
+        push_keys: None, // Not implemented yet
+    }
+}
+
+// Convert from proto EncryptedMessage to crypto EncryptedMessage
+fn proto_to_crypto_encrypted(proto: &EncryptedMessage) -> CryptoEncryptedMessage {
+    CryptoEncryptedMessage {
+        epoch: proto.epoch,
+        sender_index: proto.sender_index,
+        generation: proto.generation,
+        nonce: proto.nonce,
+        ciphertext: proto.ciphertext.clone(),
+    }
+}
+
+// Serialize EncryptedMessage using CBOR
 fn serialize_encrypted_message(encrypted: &EncryptedMessage) -> Vec<u8> {
     let mut data = Vec::new();
-    data.extend_from_slice(&encrypted.epoch.to_be_bytes());
-    data.extend_from_slice(&encrypted.sender_index.to_be_bytes());
-    data.extend_from_slice(&encrypted.generation.to_be_bytes());
-    data.extend_from_slice(&encrypted.nonce);
-    data.extend_from_slice(&(encrypted.ciphertext.len() as u32).to_be_bytes());
-    data.extend_from_slice(&encrypted.ciphertext);
+    ciborium::ser::into_writer(encrypted, &mut data)
+        .expect("CBOR serialization of EncryptedMessage should not fail");
     data
 }
 
+// Deserialize EncryptedMessage using CBOR
 fn deserialize_encrypted_message(data: &[u8]) -> Result<EncryptedMessage, String> {
-    if data.len() < 44 {
-        // 8 + 4 + 4 + 24 + 4 = 44 minimum
-        return Err("Frame too short".to_string());
-    }
-
-    let epoch = u64::from_be_bytes(data[0..8].try_into().map_err(|_| "Invalid epoch bytes")?);
-    let sender_index =
-        u32::from_be_bytes(data[8..12].try_into().map_err(|_| "Invalid sender_index bytes")?);
-    let generation =
-        u32::from_be_bytes(data[12..16].try_into().map_err(|_| "Invalid generation bytes")?);
-
-    let mut nonce = [0u8; 24];
-    nonce.copy_from_slice(&data[16..40]);
-
-    let ciphertext_len =
-        u32::from_be_bytes(data[40..44].try_into().map_err(|_| "Invalid length bytes")?) as usize;
-
-    if data.len() < 44 + ciphertext_len {
-        return Err("Truncated ciphertext".to_string());
-    }
-
-    let ciphertext = data[44..44 + ciphertext_len].to_vec();
-
-    Ok(EncryptedMessage { epoch, sender_index, generation, nonce, ciphertext })
+    ciborium::de::from_reader(data).map_err(|e| format!("CBOR decode failed: {e}"))
 }
 
 #[cfg(test)]

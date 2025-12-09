@@ -390,6 +390,124 @@ impl<E: Environment> MlsGroup<E> {
         self.add_members(key_packages)
     }
 
+    /// Join a group via a Welcome message.
+    ///
+    /// Creates a new MlsGroup instance by processing a Welcome message received
+    /// from an existing group member. The Welcome contains the group secrets
+    /// needed to participate.
+    ///
+    /// # Arguments
+    ///
+    /// - `env`: The environment implementation
+    /// - `room_id`: Room identifier for this group
+    /// - `member_id`: Our member ID
+    /// - `welcome_bytes`: TLS-serialized Welcome message
+    ///
+    /// # Returns
+    ///
+    /// A new MlsGroup instance initialized at the current group epoch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Welcome deserialization fails
+    /// - Welcome processing fails (wrong KeyPackage, crypto error, etc.)
+    pub fn join_from_welcome(
+        env: E,
+        room_id: RoomId,
+        member_id: MemberId,
+        welcome_bytes: &[u8],
+    ) -> Result<(Self, Vec<MlsAction>), MlsError> {
+        let provider = MlsProvider::new(env);
+        let ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
+
+        // Create our credential and signing key
+        let signer = SignatureKeyPair::new(ciphersuite.signature_algorithm())
+            .map_err(|e| MlsError::Crypto(format!("Failed to generate keypair: {}", e)))?;
+
+        // Deserialize the Welcome message
+        let mls_message =
+            MlsMessageIn::tls_deserialize(&mut welcome_bytes.as_ref()).map_err(|e| {
+                MlsError::Serialization(format!("Failed to deserialize Welcome: {}", e))
+            })?;
+
+        // Extract the Welcome from the MLS message
+        let welcome = match mls_message.extract() {
+            MlsMessageBodyIn::Welcome(w) => w,
+            _ => return Err(MlsError::Serialization("Message is not a Welcome".to_string())),
+        };
+
+        // Configure the group
+        let group_config = MlsGroupJoinConfig::builder().build();
+
+        // Join the group using the Welcome
+        let mls_group = StagedWelcome::new_from_welcome(&provider, &group_config, welcome, None)
+            .map_err(|e| MlsError::Crypto(format!("Failed to stage Welcome: {}", e)))?
+            .into_group(&provider)
+            .map_err(|e| MlsError::Crypto(format!("Failed to join group from Welcome: {}", e)))?;
+
+        let epoch = mls_group.epoch().as_u64();
+
+        let group = Self { room_id, member_id, mls_group, signer, provider, pending_commit: None };
+
+        let actions = vec![MlsAction::Log {
+            message: format!(
+                "Joined group {} at epoch {} via Welcome (member_id={})",
+                room_id, epoch, member_id
+            ),
+        }];
+
+        Ok((group, actions))
+    }
+
+    /// Generate a KeyPackage for joining groups.
+    ///
+    /// Creates a KeyPackage that can be shared with group members who want to
+    /// add this client to their group. The KeyPackage is signed with this
+    /// client's credential.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - The TLS-serialized KeyPackage bytes (to share with others)
+    /// - The KeyPackage hash reference (for tracking)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if KeyPackage generation fails.
+    pub fn generate_key_package(
+        env: E,
+        member_id: MemberId,
+    ) -> Result<(Vec<u8>, Vec<u8>), MlsError> {
+        let provider = MlsProvider::new(env);
+        let ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
+
+        let signer = SignatureKeyPair::new(ciphersuite.signature_algorithm())
+            .map_err(|e| MlsError::Crypto(format!("Failed to generate keypair: {}", e)))?;
+
+        let credential = BasicCredential::new(member_id.to_le_bytes().to_vec());
+        let credential_with_key = CredentialWithKey {
+            credential: credential.into(),
+            signature_key: signer.public().into(),
+        };
+
+        let key_package_bundle = KeyPackage::builder()
+            .build(ciphersuite, &provider, &signer, credential_with_key)
+            .map_err(|e| MlsError::Crypto(format!("Failed to build KeyPackage: {}", e)))?;
+
+        let key_package = key_package_bundle.key_package();
+
+        let serialized = key_package.tls_serialize_detached().map_err(|e| {
+            MlsError::Serialization(format!("Failed to serialize KeyPackage: {}", e))
+        })?;
+
+        let hash_ref = key_package
+            .hash_ref(provider.crypto())
+            .map_err(|e| MlsError::Crypto(format!("Failed to compute KeyPackage hash: {}", e)))?;
+
+        Ok((serialized, hash_ref.as_slice().to_vec()))
+    }
+
     /// Add members to the group by their KeyPackages.
     ///
     /// Creates a commit that adds the specified members to the group. The

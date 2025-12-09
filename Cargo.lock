@@ -722,6 +722,7 @@ dependencies = [
 name = "kalandra-client"
 version = "0.1.0"
 dependencies = [
+ "ciborium",
  "kalandra-core",
  "kalandra-crypto",
  "kalandra-proto",
