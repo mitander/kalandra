@@ -119,6 +119,7 @@ impl<E: Environment> MlsGroup<E> {
     ///
     /// Returns an error if MLS group creation fails (crypto initialization,
     /// etc.)
+    #[allow(clippy::too_many_lines)]
     pub fn new(
         env: E,
         room_id: RoomId,
@@ -172,6 +173,44 @@ impl<E: Environment> MlsGroup<E> {
     /// Get the MLS group ID.
     pub fn group_id(&self) -> &GroupId {
         self.mls_group.group_id()
+    }
+
+    /// Get our leaf index in the MLS tree.
+    pub fn own_leaf_index(&self) -> u32 {
+        self.mls_group.own_leaf_index().u32()
+    }
+
+    /// Get all member leaf indices in the group.
+    ///
+    /// Returns the leaf indices of all current group members, which are
+    /// needed for sender key initialization.
+    pub fn member_leaf_indices(&self) -> Vec<u32> {
+        self.mls_group.members().map(|m| m.index.u32()).collect()
+    }
+
+    /// Export a secret derived from the current epoch's key schedule.
+    ///
+    /// This is used to derive sender keys for data-plane encryption.
+    /// The secret is bound to the current epoch and the provided label.
+    ///
+    /// # Arguments
+    ///
+    /// - `label`: Application-specific label for domain separation
+    /// - `context`: Additional context bytes for the derivation
+    /// - `length`: Desired output length in bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the export fails (e.g., invalid length).
+    pub fn export_secret(
+        &self,
+        label: &str,
+        context: &[u8],
+        length: usize,
+    ) -> Result<Vec<u8>, MlsError> {
+        self.mls_group
+            .export_secret(self.provider.crypto(), label, context, length)
+            .map_err(|e| MlsError::Crypto(format!("Failed to export secret: {}", e)))
     }
 
     /// Check if we have a pending commit waiting for acceptance.
@@ -316,6 +355,41 @@ impl<E: Environment> MlsGroup<E> {
         Ok(vec![MlsAction::SendMessage(frame)])
     }
 
+    /// Add members to the group by their serialized KeyPackages.
+    ///
+    /// Creates a commit that adds the specified members to the group. The
+    /// commit must be sent to the sequencer and will advance the epoch when
+    /// accepted.
+    ///
+    /// # Arguments
+    ///
+    /// - `key_packages_bytes`: TLS-serialized KeyPackage messages
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - KeyPackage deserialization fails
+    /// - Commit creation fails
+    pub fn add_members_from_bytes(
+        &mut self,
+        key_packages_bytes: &[Vec<u8>],
+    ) -> Result<Vec<MlsAction>, MlsError> {
+        use openmls::key_packages::KeyPackageIn;
+
+        let key_packages: Vec<KeyPackage> = key_packages_bytes
+            .iter()
+            .map(|bytes| {
+                let kp_in = KeyPackageIn::tls_deserialize(&mut bytes.as_slice())
+                    .map_err(|e| MlsError::Serialization(format!("Invalid KeyPackage: {}", e)))?;
+                kp_in
+                    .validate(self.provider.crypto(), ProtocolVersion::Mls10)
+                    .map_err(|e| MlsError::Crypto(format!("Invalid KeyPackage signature: {:?}", e)))
+            })
+            .collect::<Result<Vec<_>, MlsError>>()?;
+
+        self.add_members(key_packages)
+    }
+
     /// Add members to the group by their KeyPackages.
     ///
     /// Creates a commit that adds the specified members to the group. The
@@ -325,10 +399,7 @@ impl<E: Environment> MlsGroup<E> {
     /// # Errors
     ///
     /// Returns an error if commit creation fails.
-    pub fn add_members(
-        &mut self,
-        key_packages: Vec<KeyPackage>,
-    ) -> Result<Vec<MlsAction>, MlsError> {
+    fn add_members(&mut self, key_packages: Vec<KeyPackage>) -> Result<Vec<MlsAction>, MlsError> {
         let (mls_message_out, welcome, _group_info) = self
             .mls_group
             .add_members(&self.provider, &self.signer, &key_packages)

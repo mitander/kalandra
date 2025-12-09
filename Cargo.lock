@@ -719,6 +719,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kalandra-client"
+version = "0.1.0"
+dependencies = [
+ "kalandra-core",
+ "kalandra-crypto",
+ "kalandra-proto",
+ "proptest",
+ "thiserror",
+]
+
+[[package]]
 name = "kalandra-core"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,22 @@
+[package]
+name = "kalandra-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Sans-IO client state machine for Kalandra protocol"
+
+[dependencies]
+kalandra-core = { path = "../kalandra-core" }
+kalandra-crypto = { path = "../kalandra-crypto" }
+kalandra-proto = { path = "../kalandra-proto" }
+
+# Error handling
+thiserror = "2.0"
+
+[dev-dependencies]
+# Property-based testing
+proptest = "1.5"
+
+[lints]
+workspace = true
