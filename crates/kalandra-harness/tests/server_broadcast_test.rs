@@ -10,9 +10,9 @@
 //! Each test ends with oracle checks that verify message delivery consistency.
 
 use bytes::Bytes;
-use kalandra_core::server::ServerEvent;
 use kalandra_harness::SimServer;
 use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::ServerEvent;
 use turmoil::Builder;
 
 /// Test room IDs

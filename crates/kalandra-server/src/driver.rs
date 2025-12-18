@@ -25,17 +25,17 @@
 
 use std::{collections::HashMap, ops::Sub, time::Duration};
 
-use kalandra_proto::{Frame, FrameHeader, Opcode, Payload, payloads::session::SyncResponse};
-
-use super::{
-    error::ServerError,
-    registry::{ConnectionRegistry, SessionInfo},
-};
-use crate::{
+use kalandra_core::{
     connection::{Connection, ConnectionAction, ConnectionConfig},
     env::Environment,
     mls::MlsGroupState,
+};
+use kalandra_proto::{Frame, FrameHeader, Opcode, Payload, payloads::session::SyncResponse};
+
+use crate::{
+    registry::{ConnectionRegistry, SessionInfo},
     room_manager::{RoomAction, RoomManager},
+    server_error::ServerError,
     storage::Storage,
 };
 

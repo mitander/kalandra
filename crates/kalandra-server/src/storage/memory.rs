@@ -3,10 +3,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use kalandra_core::mls::MlsGroupState;
 use kalandra_proto::Frame;
 
 use super::{Storage, StorageError};
-use crate::mls::MlsGroupState;
 
 /// In-memory storage implementation for testing and simulation
 ///

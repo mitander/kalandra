@@ -19,13 +19,11 @@
 
 use std::collections::HashMap;
 
+use kalandra_core::mls::MAX_EPOCH;
 use kalandra_proto::{Frame, FrameHeader};
 use thiserror::Error;
 
-use crate::{
-    mls::MAX_EPOCH,
-    storage::{Storage, StorageError},
-};
+use crate::storage::{Storage, StorageError};
 
 /// Errors that can occur during sequencing
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

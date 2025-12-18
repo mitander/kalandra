@@ -11,7 +11,7 @@
 //! ```
 
 use clap::Parser;
-use kalandra_server::{Server, ServerConfig};
+use kalandra_server::{DriverConfig, Server, ServerRuntimeConfig};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Kalandra protocol server
@@ -57,14 +57,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::warn!("This is NOT suitable for production use!");
     }
 
-    let config = ServerConfig {
+    let config = ServerRuntimeConfig {
         bind_address: args.bind,
         cert_path: args.cert,
         key_path: args.key,
-        driver: kalandra_core::server::ServerConfig {
-            max_connections: args.max_connections,
-            ..Default::default()
-        },
+        driver: DriverConfig { max_connections: args.max_connections, ..Default::default() },
     };
 
     let server = Server::bind(config).await?;

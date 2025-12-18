@@ -7,11 +7,11 @@
 //! - Errors are properly propagated
 
 use bytes::Bytes;
-use kalandra_core::{
-    sequencer::Sequencer,
+use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::{
+    Sequencer,
     storage::{ChaoticStorage, MemoryStorage, Storage},
 };
-use kalandra_proto::{Frame, FrameHeader, Opcode};
 use proptest::prelude::*;
 
 /// Create a test frame with specific parameters

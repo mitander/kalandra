@@ -11,31 +11,45 @@
 //! kalandra-server
 //!   ├─ SystemEnv          (production Environment impl)
 //!   ├─ QuinnTransport     (QUIC via Quinn)
-//!   └─ Server             (wraps ServerDriver)
+//!   ├─ ServerDriver       (Sans-IO orchestrator)
+//!   ├─ RoomManager        (MLS validation + sequencing)
+//!   ├─ Sequencer          (total ordering)
+//!   └─ Storage            (frame persistence)
 //! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod driver;
 mod error;
+mod executor;
+mod registry;
+mod room_manager;
+mod sequencer;
+mod server_error;
+pub mod storage;
 mod system_env;
 mod transport;
+
 use std::sync::Arc;
 
 use bytes::BytesMut;
+pub use driver::{LogLevel, ServerAction, ServerConfig as DriverConfig, ServerDriver, ServerEvent};
 pub use error::ServerError;
-use kalandra_core::{
-    server::{LogLevel, ServerAction, ServerConfig as DriverConfig, ServerDriver, ServerEvent},
-    storage::MemoryStorage,
-};
+pub use executor::{ActionExecutor, BroadcastPolicy};
 use kalandra_proto::{Frame, FrameHeader};
+pub use registry::{ConnectionRegistry, SessionInfo};
+pub use room_manager::{RoomAction, RoomError, RoomManager, RoomMetadata};
+pub use sequencer::{Sequencer, SequencerAction, SequencerError};
+pub use server_error::{ExecutorError, ServerError as DriverError};
+pub use storage::{ChaoticStorage, MemoryStorage, Storage, StorageError};
 pub use system_env::SystemEnv;
 pub use transport::{QuinnConnection, QuinnTransport};
 use zerocopy::FromBytes;
 
-/// Server configuration.
+/// Server configuration for the production runtime.
 #[derive(Debug, Clone)]
-pub struct ServerConfig {
+pub struct ServerRuntimeConfig {
     /// Address to bind to (e.g., "0.0.0.0:4433")
     pub bind_address: String,
     /// Path to TLS certificate (PEM format)
@@ -46,7 +60,7 @@ pub struct ServerConfig {
     pub driver: DriverConfig,
 }
 
-impl Default for ServerConfig {
+impl Default for ServerRuntimeConfig {
     fn default() -> Self {
         Self {
             bind_address: "0.0.0.0:4433".to_string(),
@@ -77,7 +91,7 @@ impl Server {
     /// Returns error if:
     /// - Binding to the address fails
     /// - TLS configuration is invalid
-    pub async fn bind(config: ServerConfig) -> Result<Self, ServerError> {
+    pub async fn bind(config: ServerRuntimeConfig) -> Result<Self, ServerError> {
         let env = SystemEnv::new();
         let storage = MemoryStorage::new();
         let driver = ServerDriver::new(env.clone(), storage, config.driver);
@@ -251,7 +265,6 @@ async fn execute_actions(
     for action in actions {
         match action {
             ServerAction::SendToSession { frame, .. } => {
-                // TODO: We should look up the session's stream
                 let mut buf = Vec::new();
                 frame.encode(&mut buf).map_err(|e| ServerError::Protocol(e.to_string()))?;
 
@@ -269,7 +282,6 @@ async fn execute_actions(
 
                 for session_id in sessions {
                     if Some(session_id) != exclude_session {
-                        // TODO: We should look up the session's stream
                         tracing::debug!("Would broadcast to session {}", session_id);
                     }
                 }

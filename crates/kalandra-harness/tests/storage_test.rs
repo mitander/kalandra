@@ -7,11 +7,9 @@
 //! - MLS state persistence
 
 use bytes::Bytes;
-use kalandra_core::{
-    mls::MlsGroupState,
-    storage::{MemoryStorage, Storage, StorageError},
-};
+use kalandra_core::mls::MlsGroupState;
 use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::{MemoryStorage, Storage, StorageError};
 
 // Helper to create test frames
 fn create_frame(room_id: u128, log_index: u64, sender_id: u64, epoch: u64) -> Frame {

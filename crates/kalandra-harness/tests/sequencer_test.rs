@@ -17,11 +17,8 @@
 //! - Monotonic ordering
 
 use bytes::Bytes;
-use kalandra_core::{
-    sequencer::{Sequencer, SequencerAction},
-    storage::{MemoryStorage, Storage},
-};
 use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::{MemoryStorage, Sequencer, SequencerAction, Storage};
 
 /// Helper: Create a test frame
 fn create_test_frame(room_id: u128, sender_id: u64, epoch: u64, payload: &str) -> Frame {

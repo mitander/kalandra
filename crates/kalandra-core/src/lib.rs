@@ -13,7 +13,7 @@
 //!      │ kalandra-core              │
 //!      │ - State machines           │
 //!      │ - Protocol logic           │
-//!      │ - Server-side validation   │
+//!      │ - Shared components        │
 //!      └────────────────────────────┘
 //!         ↓                      ↓
 //! ┌──────────────────┐  ┌─────────────────┐
@@ -37,8 +37,6 @@
 //!
 //! - [`connection`]: Connection state machine (handshake, heartbeat, timeout)
 //! - [`mls`]: MLS group state machine (proposals, commits, messages)
-//! - [`sequencer`]: Server-side frame sequencer with total ordering
-//! - [`storage`]: Storage abstraction (frames, MLS state)
 //! - [`env`]: Environment abstraction (time, RNG)
 //! - [`transport`]: Transport abstraction (streams)
 //! - [`error`]: Connection error types
@@ -50,8 +48,4 @@ pub mod connection;
 pub mod env;
 pub mod error;
 pub mod mls;
-pub mod room_manager;
-pub mod sequencer;
-pub mod server;
-pub mod storage;
 pub mod transport;

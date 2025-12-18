@@ -14,7 +14,7 @@ use super::{
     provider::MlsProvider,
     validator::{MlsValidator, ValidationResult},
 };
-use crate::{env::Environment, storage::Storage};
+use crate::env::Environment;
 
 /// Room identifier (128-bit UUID).
 pub type RoomId = u128;
@@ -295,12 +295,13 @@ impl<E: Environment> MlsGroup<E> {
     /// # Errors
     ///
     /// Returns `MlsError` if validation fails.
-    pub fn validate_frame(&self, frame: &Frame, storage: &impl Storage) -> Result<(), MlsError> {
-        let validation_result = if let Some(mls_state) = storage
-            .load_mls_state(self.room_id)
-            .map_err(|e| MlsError::Crypto(format!("Failed to load MLS state: {}", e)))?
-        {
-            MlsValidator::validate_frame(frame, self.epoch(), &mls_state)?
+    pub fn validate_frame(
+        &self,
+        frame: &Frame,
+        mls_state: Option<&super::MlsGroupState>,
+    ) -> Result<(), MlsError> {
+        let validation_result = if let Some(state) = mls_state {
+            MlsValidator::validate_frame(frame, self.epoch(), state)?
         } else {
             MlsValidator::validate_frame_no_state(frame)?
         };

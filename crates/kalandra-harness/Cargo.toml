@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 kalandra-core = { path = "../kalandra-core" }
 kalandra-proto = { path = "../kalandra-proto" }
+kalandra-server = { path = "../kalandra-server" }
 
 # Async trait support
 async-trait = "0.1"

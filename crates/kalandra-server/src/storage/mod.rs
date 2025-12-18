@@ -9,10 +9,9 @@ mod memory;
 
 pub use chaotic::ChaoticStorage;
 pub use error::StorageError;
+use kalandra_core::mls::MlsGroupState;
 use kalandra_proto::Frame;
 pub use memory::MemoryStorage;
-
-use crate::mls::MlsGroupState;
 
 /// Storage abstraction for frames and MLS group state
 ///

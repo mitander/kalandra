@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::server_error::ServerError as DriverError;
+
 /// Errors that can occur in the server.
 #[derive(Debug)]
 pub enum ServerError {
@@ -18,7 +20,7 @@ pub enum ServerError {
     Internal(String),
 
     /// Driver error
-    Driver(kalandra_core::server::ServerError),
+    Driver(DriverError),
 }
 
 impl fmt::Display for ServerError {
@@ -42,8 +44,8 @@ impl std::error::Error for ServerError {
     }
 }
 
-impl From<kalandra_core::server::ServerError> for ServerError {
-    fn from(err: kalandra_core::server::ServerError) -> Self {
+impl From<DriverError> for ServerError {
+    fn from(err: DriverError) -> Self {
         Self::Driver(err)
     }
 }

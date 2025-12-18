@@ -14,7 +14,7 @@
 
 use std::future::Future;
 
-use super::error::ExecutorError;
+use crate::server_error::ExecutorError;
 
 /// Policy for handling broadcast send failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

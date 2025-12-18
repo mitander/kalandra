@@ -42,12 +42,6 @@ pub enum StorageError {
     Io(String),
 }
 
-impl From<Box<bincode::ErrorKind>> for StorageError {
-    fn from(err: Box<bincode::ErrorKind>) -> Self {
-        StorageError::Serialization(err.to_string())
-    }
-}
-
 impl From<std::io::Error> for StorageError {
     fn from(err: std::io::Error) -> Self {
         StorageError::Io(err.to_string())

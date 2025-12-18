@@ -2,10 +2,8 @@
 
 use std::time::Duration;
 
-use kalandra_core::{
-    env::Environment,
-    room_manager::{RoomError, RoomManager},
-};
+use kalandra_core::env::Environment;
+use kalandra_server::{RoomError, RoomManager};
 use proptest::prelude::*;
 
 #[derive(Clone)]

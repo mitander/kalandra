@@ -11,9 +11,9 @@
 //! Each test ends with oracle checks that verify server state consistency.
 
 use bytes::Bytes;
-use kalandra_core::server::ServerEvent;
 use kalandra_harness::SimServer;
 use kalandra_proto::{Frame, FrameHeader, Opcode, Payload, payloads::session::Hello};
+use kalandra_server::ServerEvent;
 use tokio::io::AsyncReadExt;
 use turmoil::{Builder, net::TcpStream};
 

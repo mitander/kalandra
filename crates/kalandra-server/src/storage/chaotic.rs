@@ -6,10 +6,10 @@
 
 use std::sync::{Arc, Mutex};
 
+use kalandra_core::mls::MlsGroupState;
 use kalandra_proto::Frame;
 
 use super::{Storage, StorageError};
-use crate::mls::MlsGroupState;
 
 /// Chaotic storage wrapper that randomly injects failures
 ///

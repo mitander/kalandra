@@ -8,11 +8,9 @@
 //! - Pagination boundaries are correct
 
 use bytes::Bytes;
-use kalandra_core::{
-    mls::MlsGroupState,
-    storage::{ChaoticStorage, MemoryStorage, Storage, StorageError},
-};
+use kalandra_core::mls::MlsGroupState;
 use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::storage::{ChaoticStorage, MemoryStorage, Storage, StorageError};
 use proptest::prelude::*;
 
 /// Create a test frame with specific parameters

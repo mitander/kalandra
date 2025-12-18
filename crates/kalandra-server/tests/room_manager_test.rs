@@ -1,11 +1,8 @@
 //! Room Manager tests
 
 use bytes::Bytes;
-use kalandra_core::{
-    room_manager::{RoomError, RoomManager},
-    storage::{MemoryStorage, Storage},
-};
 use kalandra_proto::{Frame, FrameHeader, Opcode};
+use kalandra_server::{MemoryStorage, RoomAction, RoomError, RoomManager, Storage};
 
 // Test environment using system RNG (std::time::Instant)
 #[derive(Clone)]
@@ -169,8 +166,6 @@ fn process_frame_returns_correct_action_types() {
     let actions = result.unwrap();
 
     // Verify we have the right action types
-    use kalandra_core::room_manager::RoomAction;
-
     // First two should be PersistFrame (from AcceptFrame and StoreFrame)
     assert!(matches!(actions[0], RoomAction::PersistFrame { .. }));
     assert!(matches!(actions[1], RoomAction::PersistFrame { .. }));
@@ -321,7 +316,6 @@ fn handle_sync_request_returns_stored_frames() {
     let result = manager.handle_sync_request(room_id, requester, 0, 10, &env, &storage);
     assert!(result.is_ok());
 
-    use kalandra_core::room_manager::RoomAction;
     let action = result.unwrap();
     match action {
         RoomAction::SendSyncResponse {
@@ -370,7 +364,6 @@ fn handle_sync_request_paginates_with_limit() {
     let result = manager.handle_sync_request(room_id, 100, 0, 3, &env, &storage);
     assert!(result.is_ok());
 
-    use kalandra_core::room_manager::RoomAction;
     let action = result.unwrap();
     match action {
         RoomAction::SendSyncResponse { frames, has_more, .. } => {

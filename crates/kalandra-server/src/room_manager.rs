@@ -29,11 +29,13 @@
 
 use std::collections::HashMap;
 
+use kalandra_core::{
+    env::Environment,
+    mls::{error::MlsError, group::MlsGroup, state::MlsGroupState},
+};
 use kalandra_proto::{Frame, Opcode};
 
 use crate::{
-    env::Environment,
-    mls::{error::MlsError, group::MlsGroup, state::MlsGroupState},
     sequencer::{Sequencer, SequencerAction, SequencerError},
     storage::{Storage, StorageError},
 };
@@ -210,7 +212,7 @@ where
         &mut self,
         room_id: u128,
         key_packages: &[Vec<u8>],
-    ) -> Result<Vec<crate::mls::MlsAction>, RoomError> {
+    ) -> Result<Vec<kalandra_core::mls::MlsAction>, RoomError> {
         let group = self.groups.get_mut(&room_id).ok_or(RoomError::RoomNotFound(room_id))?;
         let actions = group.add_members_from_bytes(key_packages)?;
         Ok(actions)
@@ -230,7 +232,7 @@ where
         &mut self,
         room_id: u128,
         member_ids: &[u64],
-    ) -> Result<Vec<crate::mls::MlsAction>, RoomError> {
+    ) -> Result<Vec<kalandra_core::mls::MlsAction>, RoomError> {
         let group = self.groups.get_mut(&room_id).ok_or(RoomError::RoomNotFound(room_id))?;
         let actions = group.remove_members(member_ids)?;
         Ok(actions)
@@ -246,7 +248,10 @@ where
     ///
     /// Returns `RoomError::RoomNotFound` if the room doesn't exist.
     /// Returns `RoomError::MlsValidation` if proposal creation fails.
-    pub fn leave_room(&mut self, room_id: u128) -> Result<Vec<crate::mls::MlsAction>, RoomError> {
+    pub fn leave_room(
+        &mut self,
+        room_id: u128,
+    ) -> Result<Vec<kalandra_core::mls::MlsAction>, RoomError> {
         let group = self.groups.get_mut(&room_id).ok_or(RoomError::RoomNotFound(room_id))?;
         let actions = group.leave_group()?;
         Ok(actions)
@@ -341,7 +346,8 @@ where
         let group = self.groups.get(&room_id).ok_or(RoomError::RoomNotFound(room_id))?;
 
         // 2. Validate frame against MLS state
-        group.validate_frame(&frame, storage)?;
+        let mls_state = storage.load_mls_state(room_id)?;
+        group.validate_frame(&frame, mls_state.as_ref())?;
 
         // Check if this is a Commit before sequencing (we need the frame later)
         let is_commit = frame.header.opcode_enum() == Some(Opcode::Commit);

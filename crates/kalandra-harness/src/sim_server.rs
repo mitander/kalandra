@@ -19,11 +19,10 @@ use std::{
 };
 
 use bytes::BytesMut;
-use kalandra_core::{
-    server::{LogLevel, ServerAction, ServerConfig, ServerDriver, ServerEvent},
-    storage::MemoryStorage,
-};
 use kalandra_proto::Frame;
+use kalandra_server::{
+    DriverConfig, LogLevel, MemoryStorage, ServerAction, ServerDriver, ServerEvent,
+};
 use tokio::{
     io::{AsyncWriteExt, WriteHalf},
     sync::Mutex,
@@ -66,7 +65,7 @@ impl SimServer {
     ///
     /// Returns error if binding fails (address in use, etc.)
     pub async fn bind(address: &str) -> io::Result<Self> {
-        Self::bind_with_config(address, ServerConfig::default()).await
+        Self::bind_with_config(address, DriverConfig::default()).await
     }
 
     /// Create and bind a new simulation server with custom config.
@@ -74,7 +73,7 @@ impl SimServer {
     /// # Errors
     ///
     /// Returns error if binding fails.
-    pub async fn bind_with_config(address: &str, config: ServerConfig) -> io::Result<Self> {
+    pub async fn bind_with_config(address: &str, config: DriverConfig) -> io::Result<Self> {
         let listener = TcpListener::bind(address).await?;
         let env = SimEnv::new();
         let storage = MemoryStorage::new();
