@@ -291,12 +291,16 @@ async fn execute_actions(
                 tracing::info!("Closing connection {}: {}", session_id, reason);
             },
 
-            ServerAction::PersistFrame { .. } => {
-                // Storage is handled internally by the driver
+            ServerAction::PersistFrame { room_id, log_index, frame } => {
+                if let Err(e) = driver.storage().store_frame(room_id, log_index, &frame) {
+                    tracing::error!("Failed to persist frame: {}", e);
+                }
             },
 
-            ServerAction::PersistMlsState { .. } => {
-                // Storage is handled internally by the driver
+            ServerAction::PersistMlsState { room_id, state } => {
+                if let Err(e) = driver.storage().store_mls_state(room_id, &state) {
+                    tracing::error!("Failed to persist MLS state: {}", e);
+                }
             },
 
             ServerAction::Log { level, message, .. } => match level {

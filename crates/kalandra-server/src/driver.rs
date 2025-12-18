@@ -522,6 +522,13 @@ where
     pub fn room_epoch(&self, room_id: u128) -> Option<u64> {
         self.room_manager.epoch(room_id)
     }
+
+    /// Get a reference to the storage backend.
+    ///
+    /// Used by the executor to persist frames and MLS state.
+    pub fn storage(&self) -> &S {
+        &self.storage
+    }
 }
 
 impl<E, S> std::fmt::Debug for ServerDriver<E, S>

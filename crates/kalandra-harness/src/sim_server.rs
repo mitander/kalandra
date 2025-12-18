@@ -21,7 +21,7 @@ use std::{
 use bytes::BytesMut;
 use kalandra_proto::Frame;
 use kalandra_server::{
-    DriverConfig, LogLevel, MemoryStorage, ServerAction, ServerDriver, ServerEvent,
+    DriverConfig, LogLevel, MemoryStorage, ServerAction, ServerDriver, ServerEvent, Storage,
 };
 use tokio::{
     io::{AsyncWriteExt, WriteHalf},
@@ -145,12 +145,16 @@ impl SimServer {
                     self.close_connection(session_id, &reason);
                 },
 
-                ServerAction::PersistFrame { .. } => {
-                    // Storage is handled by the driver internally
+                ServerAction::PersistFrame { room_id, log_index, frame } => {
+                    if let Err(e) = self.driver.storage().store_frame(room_id, log_index, &frame) {
+                        eprintln!("[ERROR] Failed to persist frame: {}", e);
+                    }
                 },
 
-                ServerAction::PersistMlsState { .. } => {
-                    // Storage is handled by the driver internally
+                ServerAction::PersistMlsState { room_id, state } => {
+                    if let Err(e) = self.driver.storage().store_mls_state(room_id, &state) {
+                        eprintln!("[ERROR] Failed to persist MLS state: {}", e);
+                    }
                 },
 
                 ServerAction::Log { level, message, .. } => {
