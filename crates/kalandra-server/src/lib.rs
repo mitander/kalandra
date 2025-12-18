@@ -199,10 +199,11 @@ async fn handle_connection(
 
     {
         let mut driver = driver.lock().await;
-        let _ = driver.process_event(ServerEvent::ConnectionClosed {
+        let actions = driver.process_event(ServerEvent::ConnectionClosed {
             conn_id,
             reason: "connection closed".to_string(),
-        });
+        })?;
+        execute_actions(&mut *driver, actions, &shared).await?;
     }
 
     Ok(())
