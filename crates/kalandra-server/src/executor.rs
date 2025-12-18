@@ -38,11 +38,7 @@ pub enum BroadcastPolicy {
 ///
 /// Implementations perform the actual I/O (sending frames, persisting data).
 /// The trait is async to support non-blocking I/O in production.
-///
-/// # Type Parameters
-///
-/// - `I`: The instant type (for timestamps in actions)
-pub trait ActionExecutor<I>: Send + Sync {
+pub trait ActionExecutor: Send + Sync {
     /// Execute a single server action.
     ///
     /// # Errors
@@ -51,7 +47,7 @@ pub trait ActionExecutor<I>: Send + Sync {
     /// The error type indicates whether retry is appropriate.
     fn execute(
         &self,
-        action: super::ServerAction<I>,
+        action: super::ServerAction,
     ) -> impl Future<Output = Result<(), ExecutorError>> + Send;
 
     /// Get the broadcast policy for this executor.

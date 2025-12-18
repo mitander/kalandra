@@ -21,9 +21,7 @@ use kalandra_core::{
 struct TestEnv;
 
 impl Environment for TestEnv {
-    type Instant = Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> Instant {
         Instant::now()
     }
 

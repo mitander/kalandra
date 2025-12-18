@@ -121,10 +121,7 @@ impl SimServer {
     }
 
     /// Execute server actions.
-    async fn execute_actions(
-        &mut self,
-        actions: Vec<ServerAction<std::time::Instant>>,
-    ) -> io::Result<()> {
+    async fn execute_actions(&mut self, actions: Vec<ServerAction>) -> io::Result<()> {
         for action in actions {
             match action {
                 ServerAction::SendToSession { session_id, frame } => {

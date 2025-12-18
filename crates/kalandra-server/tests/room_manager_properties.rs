@@ -10,9 +10,7 @@ use proptest::prelude::*;
 struct TestEnv;
 
 impl Environment for TestEnv {
-    type Instant = std::time::Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> std::time::Instant {
         std::time::Instant::now()
     }
 

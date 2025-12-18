@@ -1,6 +1,6 @@
 //! Client-side MLS group state machine.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use kalandra_proto::{Frame, FrameHeader, Opcode};
 use openmls::{key_packages::KeyPackageIn, prelude::*};
@@ -113,17 +113,17 @@ pub struct MlsGroup<E: Environment> {
     provider: MlsProvider<E>,
 
     /// Pending commit that we sent (waiting for sequencer acceptance)
-    pending_commit: Option<PendingCommit<E::Instant>>,
+    pending_commit: Option<PendingCommit>,
 }
 
 /// Tracks a commit we sent that's waiting for sequencer acceptance.
 #[derive(Debug, Clone)]
-struct PendingCommit<I> {
+struct PendingCommit {
     /// Epoch this commit will create when accepted
     target_epoch: u64,
 
     /// When we sent it (for timeout detection)
-    sent_at: I,
+    sent_at: std::time::Instant,
 }
 
 impl<E: Environment> MlsGroup<E> {
@@ -268,10 +268,7 @@ impl<E: Environment> MlsGroup<E> {
     ///
     /// Returns true if we have a pending commit that's been waiting for at
     /// least the timeout duration (inclusive).
-    pub fn is_commit_timeout(&self, now: E::Instant, timeout: std::time::Duration) -> bool
-    where
-        E::Instant: Copy + Ord + std::ops::Sub<Output = std::time::Duration>,
-    {
+    pub fn is_commit_timeout(&self, now: std::time::Instant, timeout: Duration) -> bool {
         self.pending_commit
             .as_ref()
             .map(|pending| now - pending.sent_at >= timeout)
@@ -896,9 +893,7 @@ mod tests {
     struct TestEnv;
 
     impl Environment for TestEnv {
-        type Instant = Instant;
-
-        fn now(&self) -> Self::Instant {
+        fn now(&self) -> Instant {
             Instant::now()
         }
 

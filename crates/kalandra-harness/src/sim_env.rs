@@ -74,9 +74,7 @@ impl Default for SimEnv {
 }
 
 impl Environment for SimEnv {
-    type Instant = std::time::Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> std::time::Instant {
         tokio::time::Instant::now().into()
     }
 

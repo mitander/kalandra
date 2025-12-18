@@ -3,6 +3,8 @@
 //! These tests verify basic MLS group functionality using the scenario
 //! framework.
 
+use std::time::Duration;
+
 use kalandra_core::{
     env::Environment,
     mls::{MlsAction, MlsGroup},
@@ -89,11 +91,11 @@ fn mls_group_commit_timeout() {
         let (group, _) = MlsGroup::new(env, 1, 100).unwrap();
 
         // No timeout initially
-        let timeout_duration = std::time::Duration::from_secs(30);
+        let timeout_duration = Duration::from_secs(30);
         assert!(!group.is_commit_timeout(now, timeout_duration));
 
         // Still no timeout after 29 seconds
-        let future = now + std::time::Duration::from_secs(29);
+        let future = now + Duration::from_secs(29);
         assert!(!group.is_commit_timeout(future, timeout_duration));
 
         Ok(())

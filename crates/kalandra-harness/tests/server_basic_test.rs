@@ -10,6 +10,8 @@
 //!
 //! Each test ends with oracle checks that verify server state consistency.
 
+use std::time::Duration;
+
 use bytes::Bytes;
 use kalandra_harness::SimServer;
 use kalandra_proto::{Frame, FrameHeader, Opcode, Payload, payloads::session::Hello};
@@ -53,7 +55,7 @@ fn server_accepts_connection() {
         let _stream = TcpStream::connect("server:443").await?;
 
         // Small delay to let server process
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
 
         Ok(())
     });
@@ -93,12 +95,10 @@ fn server_handles_hello_handshake() {
         let mut buf = vec![0u8; 1024];
 
         // Give server time to process and send reply
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Try to read - may get HelloReply
-        match tokio::time::timeout(std::time::Duration::from_millis(100), stream.read(&mut buf))
-            .await
-        {
+        match tokio::time::timeout(Duration::from_millis(100), stream.read(&mut buf)).await {
             Ok(Ok(n)) if n > 0 => {
                 // Got some data - likely HelloReply
                 eprintln!("Client received {} bytes", n);
@@ -138,7 +138,7 @@ fn server_creates_room_after_connection() {
 
     sim.client("client", async {
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
         Ok(())
     });
 
@@ -171,24 +171,24 @@ fn server_multiple_connections() {
     // Client 1
     sim.client("client1", async {
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 
     // Client 2
     sim.client("client2", async {
         // Small delay to ensure ordering
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 
     // Client 3
     sim.client("client3", async {
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 
@@ -225,7 +225,7 @@ fn server_processes_app_message_frame() {
 
     sim.client("client", async {
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     });
 
@@ -260,7 +260,7 @@ fn server_rejects_frame_for_unknown_room() {
 
     sim.client("client", async {
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     });
 
@@ -295,14 +295,14 @@ fn server_subscription_management() {
 
     sim.client("client1", async {
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 
     sim.client("client2", async {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         let _stream = TcpStream::connect("server:443").await?;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())
     });
 

@@ -18,6 +18,8 @@
 //! conditions. Higher loss rates cause TCP handshake failures and extreme
 //! retransmission delays, making tests non-deterministic.
 
+use std::time::Duration;
+
 use kalandra_core::{env::Environment, transport::Transport};
 use kalandra_harness::{SimEnv, SimTransport};
 use kalandra_proto::{Frame, FrameHeader, Opcode};
@@ -34,7 +36,7 @@ fn ping_pong_with_packet_loss() {
     // Using 2% loss - realistic degraded network that completes reliably
     // Set deterministic seed for reproducible packet loss patterns
     let mut sim = turmoil::Builder::new()
-        .simulation_duration(std::time::Duration::from_secs(60))
+        .simulation_duration(Duration::from_secs(60))
         .fail_rate(0.02)  // 2% packet loss - realistic degraded network
         .rng_seed(12345)  // Deterministic seed
         .build();
@@ -77,7 +79,7 @@ fn ping_pong_with_packet_loss() {
         let (mut send, mut recv) = conn.into_split();
 
         // Wait a bit (virtual time)
-        env.sleep(std::time::Duration::from_millis(10)).await;
+        env.sleep(Duration::from_millis(10)).await;
 
         // Create Ping frame
         let ping_header = FrameHeader::new(Opcode::Ping);
@@ -108,9 +110,9 @@ fn ping_pong_with_packet_loss() {
 #[test]
 fn ping_pong_with_latency() {
     let mut sim = turmoil::Builder::new()
-        .simulation_duration(std::time::Duration::from_secs(60))
-        .min_message_latency(std::time::Duration::from_millis(100))
-        .max_message_latency(std::time::Duration::from_millis(100))
+        .simulation_duration(Duration::from_secs(60))
+        .min_message_latency(Duration::from_millis(100))
+        .max_message_latency(Duration::from_millis(100))
         .build();
 
     // Server: respond to Ping with Pong
@@ -166,11 +168,7 @@ fn ping_pong_with_latency() {
         let elapsed = env.now() - start;
 
         // Round trip should be ~200ms (100ms each way)
-        assert!(
-            elapsed >= std::time::Duration::from_millis(200),
-            "Round trip too fast: {:?}",
-            elapsed
-        );
+        assert!(elapsed >= Duration::from_millis(200), "Round trip too fast: {:?}", elapsed);
 
         Ok(())
     });
@@ -186,10 +184,8 @@ fn network_partition_then_heal() {
     // 3. Partition heals
     // 4. Communication resumes
 
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(std::time::Duration::from_secs(120))
-        .rng_seed(42)
-        .build();
+    let mut sim =
+        turmoil::Builder::new().simulation_duration(Duration::from_secs(120)).rng_seed(42).build();
 
     // Server: accept connection, wait through partition, then respond
     sim.host("server", || async move {
@@ -271,7 +267,7 @@ fn network_partition_then_heal() {
         drop(recv);
 
         // Simulate partition by introducing delay
-        env.sleep(std::time::Duration::from_secs(5)).await;
+        env.sleep(Duration::from_secs(5)).await;
 
         // === PHASE 3: Partition healed, reconnect ===
         let conn2 = transport.connect_to_host("server:443").await?;
@@ -301,10 +297,8 @@ fn asymmetric_packet_loss() {
     // but server → client is reliable. This simulates asymmetric routing
     // issues or congestion in one direction.
 
-    let mut sim = turmoil::Builder::new()
-        .simulation_duration(std::time::Duration::from_secs(60))
-        .rng_seed(789)
-        .build();
+    let mut sim =
+        turmoil::Builder::new().simulation_duration(Duration::from_secs(60)).rng_seed(789).build();
 
     // Server: echo back whatever is received
     sim.host("server", || async move {

@@ -23,7 +23,7 @@
 //! 2. ServerDriver processes events and produces `ServerAction`s
 //! 3. ActionExecutor (runtime-specific) executes actions
 
-use std::{collections::HashMap, ops::Sub, time::Duration};
+use std::{collections::HashMap, time::Instant};
 
 use kalandra_core::{
     connection::{Connection, ConnectionAction, ConnectionConfig},
@@ -89,7 +89,7 @@ pub enum ServerEvent {
 ///
 /// These are executed by the ActionExecutor (runtime-specific).
 #[derive(Debug, Clone)]
-pub enum ServerAction<I> {
+pub enum ServerAction {
     /// Send a frame to a specific session
     SendToSession {
         /// Target session ID
@@ -141,7 +141,7 @@ pub enum ServerAction<I> {
         /// Message to log
         message: String,
         /// When the event occurred
-        timestamp: I,
+        timestamp: Instant,
     },
 }
 
@@ -173,7 +173,7 @@ where
     S: Storage,
 {
     /// Connection state machines (conn_id → Connection)
-    connections: HashMap<u64, Connection<E::Instant>>,
+    connections: HashMap<u64, Connection>,
     /// Session/room registry
     registry: ConnectionRegistry,
     /// Room manager (MLS validation + sequencing)
@@ -190,7 +190,6 @@ impl<E, S> ServerDriver<E, S>
 where
     E: Environment,
     S: Storage,
-    E::Instant: Sub<Output = Duration>,
 {
     /// Create a new server driver.
     pub fn new(env: E, storage: S, config: ServerConfig) -> Self {
@@ -207,10 +206,7 @@ where
     /// Process a server event and return actions to execute.
     ///
     /// This is the main entry point for the server driver.
-    pub fn process_event(
-        &mut self,
-        event: ServerEvent,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    pub fn process_event(&mut self, event: ServerEvent) -> Result<Vec<ServerAction>, ServerError> {
         match event {
             ServerEvent::ConnectionAccepted { conn_id } => self.handle_connection_accepted(conn_id),
             ServerEvent::FrameReceived { conn_id, frame } => {
@@ -227,7 +223,7 @@ where
     fn handle_connection_accepted(
         &mut self,
         conn_id: u64,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    ) -> Result<Vec<ServerAction>, ServerError> {
         let now = self.env.now();
 
         if self.connections.len() >= self.config.max_connections {
@@ -237,7 +233,7 @@ where
             }]);
         }
 
-        let mut conn = Connection::new(&self.env, now, self.config.connection.clone());
+        let mut conn = Connection::new(now, self.config.connection.clone());
 
         let session_id = self.env.random_u64();
         conn.set_session_id(session_id);
@@ -257,7 +253,7 @@ where
         &mut self,
         conn_id: u64,
         frame: Frame,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    ) -> Result<Vec<ServerAction>, ServerError> {
         let now = self.env.now();
         let mut actions = Vec::new();
 
@@ -348,7 +344,7 @@ where
         &mut self,
         conn_id: u64,
         frame: &Frame,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    ) -> Result<Vec<ServerAction>, ServerError> {
         let room_id = frame.header.room_id();
 
         let payload = Payload::from_frame(frame.clone())?;
@@ -376,7 +372,7 @@ where
         &mut self,
         conn_id: u64,
         reason: &str,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    ) -> Result<Vec<ServerAction>, ServerError> {
         let now = self.env.now();
         let mut actions = Vec::new();
 
@@ -401,7 +397,7 @@ where
     }
 
     /// Handle periodic tick for timeout checking.
-    fn handle_tick(&mut self) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    fn handle_tick(&mut self) -> Result<Vec<ServerAction>, ServerError> {
         let now = self.env.now();
         let mut actions = Vec::new();
 
@@ -436,9 +432,9 @@ where
     /// Convert a RoomAction to ServerActions.
     fn convert_room_action(
         &self,
-        room_action: RoomAction<E::Instant>,
+        room_action: RoomAction,
         sender_conn_id: u64,
-    ) -> Vec<ServerAction<E::Instant>> {
+    ) -> Vec<ServerAction> {
         match room_action {
             RoomAction::Broadcast { room_id, frame, exclude_sender, .. } => {
                 let is_sender = if exclude_sender { Some(sender_conn_id) } else { None };
@@ -496,7 +492,7 @@ where
         &mut self,
         room_id: u128,
         creator_conn_id: u64,
-    ) -> Result<Vec<ServerAction<E::Instant>>, ServerError> {
+    ) -> Result<Vec<ServerAction>, ServerError> {
         let now = self.env.now();
 
         let info = self
@@ -569,6 +565,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::storage::MemoryStorage;
 
@@ -576,9 +574,7 @@ mod tests {
     struct TestEnv {}
 
     impl Environment for TestEnv {
-        type Instant = std::time::Instant;
-
-        fn now(&self) -> Self::Instant {
+        fn now(&self) -> std::time::Instant {
             // Using real Instant for simplicity in unit tests
             std::time::Instant::now()
         }

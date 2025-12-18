@@ -98,8 +98,8 @@ impl RunnableScenario {
         let env = SimEnv::new();
         let now = env.now();
 
-        let client = Connection::new(&env, now, self.scenario.client_config.clone());
-        let mut server = Connection::new(&env, now, self.scenario.server_config.clone());
+        let client = Connection::new(now, self.scenario.client_config.clone());
+        let mut server = Connection::new(now, self.scenario.server_config.clone());
         server.set_session_id(0x1000_0000_0000_0000);
 
         world.set_client(client);

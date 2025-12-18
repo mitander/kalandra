@@ -36,7 +36,7 @@ impl<E: Environment> MlsProvider<E> {
     /// Get the current time from the environment.
     ///
     /// Used for tracking when commits are sent for timeout detection.
-    pub fn now(&self) -> E::Instant {
+    pub fn now(&self) -> std::time::Instant {
         self.rand.env.now()
     }
 }

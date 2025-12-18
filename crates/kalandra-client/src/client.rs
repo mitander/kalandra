@@ -131,10 +131,7 @@ impl<E: Environment> Client<E> {
     /// # Errors
     ///
     /// Returns `ClientError` if the event cannot be processed.
-    pub fn handle(
-        &mut self,
-        event: ClientEvent<E::Instant>,
-    ) -> Result<Vec<ClientAction>, ClientError> {
+    pub fn handle(&mut self, event: ClientEvent) -> Result<Vec<ClientAction>, ClientError> {
         match event {
             ClientEvent::CreateRoom { room_id } => self.handle_create_room(room_id),
             ClientEvent::SendMessage { room_id, plaintext } => {
@@ -519,10 +516,7 @@ impl<E: Environment> Client<E> {
     /// Checks all rooms for pending commits that have timed out.
     /// For rooms with timed-out commits, clears the pending state and emits
     /// `RequestSync` actions.
-    fn handle_tick(&mut self, now: E::Instant) -> Result<Vec<ClientAction>, ClientError>
-    where
-        E::Instant: Copy + Ord + std::ops::Sub<Output = std::time::Duration>,
-    {
+    fn handle_tick(&mut self, now: std::time::Instant) -> Result<Vec<ClientAction>, ClientError> {
         let mut actions = Vec::new();
 
         for (&room_id, room) in &mut self.rooms {
@@ -653,9 +647,7 @@ mod tests {
     struct TestEnv;
 
     impl Environment for TestEnv {
-        type Instant = Instant;
-
-        fn now(&self) -> Self::Instant {
+        fn now(&self) -> Instant {
             Instant::now()
         }
 

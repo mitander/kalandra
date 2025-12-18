@@ -1,5 +1,7 @@
 //! Room Manager tests
 
+use std::time::Duration;
+
 use bytes::Bytes;
 use kalandra_proto::{Frame, FrameHeader, Opcode};
 use kalandra_server::{MemoryStorage, RoomAction, RoomError, RoomManager, Storage};
@@ -9,13 +11,11 @@ use kalandra_server::{MemoryStorage, RoomAction, RoomError, RoomManager, Storage
 struct TestEnv;
 
 impl kalandra_core::env::Environment for TestEnv {
-    type Instant = std::time::Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> std::time::Instant {
         std::time::Instant::now()
     }
 
-    fn sleep(&self, duration: std::time::Duration) -> impl std::future::Future<Output = ()> + Send {
+    fn sleep(&self, duration: Duration) -> impl std::future::Future<Output = ()> + Send {
         async move {
             tokio::time::sleep(duration).await;
         }

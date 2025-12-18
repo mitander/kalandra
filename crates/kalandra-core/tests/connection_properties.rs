@@ -21,9 +21,7 @@ use proptest::prelude::*;
 struct TestEnv;
 
 impl Environment for TestEnv {
-    type Instant = Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> Instant {
         Instant::now()
     }
 
@@ -63,7 +61,7 @@ fn prop_send_hello_only_from_init() {
     proptest!(|(config in config_strategy())| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config);
+        let mut conn = Connection::new(now, config);
 
         // First call should succeed
         assert!(conn.send_hello(now).is_ok());
@@ -81,7 +79,7 @@ fn prop_state_never_goes_backward() {
     proptest!(|(config in config_strategy(), session_id in session_id_strategy())| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config);
+        let mut conn = Connection::new(now, config);
 
         // Track state progression
         let mut states = vec![conn.state()];
@@ -112,7 +110,7 @@ fn handshake_timeout_no_response() {
     let env = TestEnv;
     let now = env.now();
     let config = ConnectionConfig::default(); // 30s handshake timeout
-    let mut client = Connection::new(&env, now, config);
+    let mut client = Connection::new(now, config);
 
     // Client sends Hello
     let actions = client.send_hello(now).expect("send_hello should succeed");
@@ -138,7 +136,7 @@ fn prop_timeout_always_closes() {
     proptest!(|(config in config_strategy())| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
 
         // Test handshake timeout
         let _ = conn.send_hello(now);
@@ -164,7 +162,7 @@ fn prop_idle_timeout_only_authenticated() {
         let now = env.now();
 
         // Test Init state - no timeout
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
         let future = now + advance;
         let actions = conn.tick(future);
         // Init state never times out
@@ -172,7 +170,7 @@ fn prop_idle_timeout_only_authenticated() {
         assert!(actions.is_empty());
 
         // Test Authenticated state - timeout if advance > idle_timeout
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
         let _ = conn.send_hello(now);
         let hello_reply = Payload::HelloReply(HelloReply {
             session_id,
@@ -205,7 +203,7 @@ fn prop_heartbeats_only_authenticated() {
         let now = env.now();
 
         // Test Init state - no heartbeat
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
         let future = now + config.heartbeat_interval + Duration::from_secs(1);
         let actions = conn.tick(future);
 
@@ -216,7 +214,7 @@ fn prop_heartbeats_only_authenticated() {
         assert!(!has_heartbeat, "Init state should not send heartbeats");
 
         // Test Pending state - no heartbeat
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
         let _ = conn.send_hello(now);
         let future = now + config.heartbeat_interval + Duration::from_secs(1);
         let actions = conn.tick(future);
@@ -229,7 +227,7 @@ fn prop_heartbeats_only_authenticated() {
 
         // Test Authenticated state - should send heartbeat
         // NOTE: heartbeat_interval must be < idle_timeout or timeout wins
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
         let _ = conn.send_hello(now);
         let hello_reply = Payload::HelloReply(HelloReply {
             session_id,
@@ -263,7 +261,7 @@ fn prop_session_id_immutable() {
     )| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config);
+        let mut conn = Connection::new(now, config);
 
         // Client flow
         let _ = conn.send_hello(now);
@@ -305,7 +303,7 @@ fn prop_activity_resets_timeout() {
     )| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config.clone());
+        let mut conn = Connection::new(now, config.clone());
 
         // Get to Authenticated state
         let _ = conn.send_hello(now);
@@ -367,7 +365,7 @@ fn prop_closed_is_terminal() {
     )| {
         let env = TestEnv;
         let now = env.now();
-        let mut conn = Connection::new(&env, now, config);
+        let mut conn = Connection::new(now, config);
 
         // Force to closed state
         conn.close();
@@ -401,8 +399,8 @@ fn prop_session_id_deterministic_with_same_env() {
         let now = env.now();
 
         // Create two connections with same environment
-        let mut conn1 = Connection::new(&env, now, config.clone());
-        let mut conn2 = Connection::new(&env, now, config);
+        let mut conn1 = Connection::new(now, config.clone());
+        let mut conn2 = Connection::new(now, config);
 
         // Create Hello message
         let hello = Hello {

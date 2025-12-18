@@ -30,17 +30,12 @@
 //!   sequence
 //! - Isolation: Implementations must not share global state
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Abstract environment providing time, randomness, and async primitives.
 ///
 /// This trait is the foundation of the Sans-IO architecture. It allows
 /// protocol logic to be completely deterministic and testable.
-///
-/// # Type Parameters
-///
-/// - `Instant`: Represents a point in time. In simulation, this is Turmoil's
-///   virtual time. In production, this is `std::time::Instant`.
 ///
 /// # Implementations
 ///
@@ -60,14 +55,6 @@ use std::time::Duration;
 /// 3. Minimal panics: Methods are infallible except in exceptional
 ///    circumstances (e.g., OS entropy exhaustion, incorrect simulation setup)
 pub trait Environment: Clone + Send + Sync + 'static {
-    /// Type representing a point in time.
-    ///
-    /// Must support:
-    /// - `Copy` - Lightweight to pass around
-    /// - `Ord` - Can be compared (for timeout logic)
-    /// - `Sub<Output = Duration>` - Can compute elapsed time
-    type Instant: Copy + Ord + Send + Sync + std::ops::Sub<Output = Duration>;
-
     /// Returns the current time.
     ///
     /// # Invariants
@@ -78,9 +65,10 @@ pub trait Environment: Clone + Send + Sync + 'static {
     ///
     /// # Implementation Notes
     ///
-    /// - Simulation: Returns Turmoil's virtual time (controllable)
+    /// - Simulation: Returns Turmoil's virtual time (via tokio::time which
+    ///   turmoil intercepts)
     /// - Production: Returns `std::time::Instant::now()` (real clock)
-    fn now(&self) -> Self::Instant;
+    fn now(&self) -> Instant;
 
     /// Sleeps for the specified duration.
     ///

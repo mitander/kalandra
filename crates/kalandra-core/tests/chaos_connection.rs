@@ -21,9 +21,7 @@ use proptest::prelude::*;
 struct TestEnv;
 
 impl Environment for TestEnv {
-    type Instant = Instant;
-
-    fn now(&self) -> Self::Instant {
+    fn now(&self) -> Instant {
         Instant::now()
     }
 
@@ -82,7 +80,7 @@ fn prop_connection_never_panics_on_invalid_frames() {
         let env = TestEnv;
         let t0 = env.now();
         let config = ConnectionConfig::default();
-        let mut conn = Connection::new(&env, t0, config);
+        let mut conn = Connection::new(t0, config);
 
         let frame = create_frame_for_opcode(opcode);
 
@@ -111,7 +109,7 @@ fn prop_connection_state_transitions_valid() {
         let env = TestEnv;
         let t0 = env.now();
         let config = ConnectionConfig::default();
-        let mut conn = Connection::new(&env, t0, config);
+        let mut conn = Connection::new(t0, config);
 
         let initial_state = conn.state().clone();
 
@@ -156,7 +154,7 @@ fn prop_connection_closed_stays_closed() {
         let env = TestEnv;
         let t0 = env.now();
         let config = ConnectionConfig::default();
-        let mut conn = Connection::new(&env, t0, config);
+        let mut conn = Connection::new(t0, config);
 
         // Force connection to closed state
         conn.close();
@@ -190,7 +188,7 @@ fn prop_connection_tick_monotonic_time() {
         let env = TestEnv;
         let t0 = env.now();
         let config = ConnectionConfig::default();
-        let mut conn = Connection::new(&env, t0, config);
+        let mut conn = Connection::new(t0, config);
 
         let mut t = t0;
 
@@ -223,7 +221,7 @@ fn prop_connection_tick_linear_complexity() {
         let env = TestEnv;
         let t0 = env.now();
         let config = ConnectionConfig::default();
-        let mut conn = Connection::new(&env, t0, config);
+        let mut conn = Connection::new(t0, config);
 
         let mut t = t0;
         let mut action_count = 0usize;

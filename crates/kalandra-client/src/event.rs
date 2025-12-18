@@ -4,6 +4,8 @@
 //! - Events are fed into the client by the caller
 //! - Actions are produced by the client for the caller to execute
 
+use std::time::Instant;
+
 use kalandra_core::mls::RoomId;
 use kalandra_proto::Frame;
 
@@ -14,7 +16,7 @@ use kalandra_proto::Frame;
 /// - Driving time forward via ticks
 /// - Forwarding application intents (send message, create room, etc.)
 #[derive(Debug, Clone)]
-pub enum ClientEvent<I> {
+pub enum ClientEvent {
     /// Frame received from server.
     FrameReceived(Frame),
 
@@ -24,7 +26,7 @@ pub enum ClientEvent<I> {
     /// to detect timeouts and perform housekeeping.
     Tick {
         /// Current time from the environment.
-        now: I,
+        now: Instant,
     },
 
     /// Application wants to send a message.

@@ -25,7 +25,6 @@
 //! - **Explicit room creation**: Prevents accidental rooms, enables future auth
 //! - **RoomMetadata**: Extension point for permissions/roles (added later)
 //! - **Sans-IO**: All methods return actions, no direct I/O
-//! - **Generic over Instant**: Works with any time abstraction
 
 use std::collections::HashMap;
 
@@ -42,11 +41,11 @@ use crate::{
 
 /// Metadata about a room (extension point for future authorization)
 #[derive(Debug, Clone)]
-pub struct RoomMetadata<I> {
+pub struct RoomMetadata {
     /// User who created the room
     pub creator: u64, // UserId
     /// When the room was created
-    pub created_at: I,
+    pub created_at: std::time::Instant,
     // Future: admins, members, permissions
 }
 
@@ -60,14 +59,12 @@ where
     /// Frame sequencer (assigns log indices)
     sequencer: Sequencer,
     /// Room metadata (for future authorization)
-    room_metadata: HashMap<u128, RoomMetadata<E::Instant>>,
+    room_metadata: HashMap<u128, RoomMetadata>,
 }
 
 /// Actions returned by RoomManager for driver to execute.
-///
-/// Generic over `I` (Instant type) to support both real and virtual time.
 #[derive(Debug, Clone)]
-pub enum RoomAction<I> {
+pub enum RoomAction {
     /// Broadcast this frame to all room members
     Broadcast {
         /// Room ID to broadcast to
@@ -77,7 +74,7 @@ pub enum RoomAction<I> {
         /// Whether to exclude the original sender
         exclude_sender: bool,
         /// When the frame was processed by the server
-        processed_at: I,
+        processed_at: std::time::Instant,
     },
 
     /// Persist frame to storage
@@ -89,7 +86,7 @@ pub enum RoomAction<I> {
         /// Frame to persist
         frame: Frame,
         /// When the frame was processed by the server
-        processed_at: I,
+        processed_at: std::time::Instant,
     },
 
     /// Persist updated MLS state
@@ -99,7 +96,7 @@ pub enum RoomAction<I> {
         /// Updated MLS state to persist
         state: MlsGroupState,
         /// When the state was updated
-        processed_at: I,
+        processed_at: std::time::Instant,
     },
 
     /// Reject frame (send error to sender)
@@ -109,7 +106,7 @@ pub enum RoomAction<I> {
         /// Reason for rejection
         reason: String,
         /// When the rejection occurred
-        processed_at: I,
+        processed_at: std::time::Instant,
     },
 
     /// Send sync response to client
@@ -125,7 +122,7 @@ pub enum RoomAction<I> {
         /// Current epoch for this room
         server_epoch: u64,
         /// When the response was prepared
-        processed_at: I,
+        processed_at: std::time::Instant,
     },
 }
 
@@ -283,7 +280,7 @@ where
         limit: usize,
         env: &E,
         storage: &impl Storage,
-    ) -> Result<RoomAction<E::Instant>, RoomError> {
+    ) -> Result<RoomAction, RoomError> {
         let now = env.now();
 
         let group = self.groups.get(&room_id).ok_or(RoomError::RoomNotFound(room_id))?;
@@ -338,7 +335,7 @@ where
         frame: Frame,
         env: &E,
         storage: &impl Storage,
-    ) -> Result<Vec<RoomAction<E::Instant>>, RoomError> {
+    ) -> Result<Vec<RoomAction>, RoomError> {
         let now = env.now();
 
         // 1. Room must exist (no lazy creation)
@@ -357,7 +354,7 @@ where
         let sequencer_actions = self.sequencer.process_frame(frame, storage)?;
 
         // 4. Convert SequencerAction to RoomAction
-        let mut room_actions: Vec<RoomAction<E::Instant>> = sequencer_actions
+        let mut room_actions: Vec<RoomAction> = sequencer_actions
             .into_iter()
             .map(|action| match action {
                 SequencerAction::AcceptFrame { room_id, log_index, frame } => {

@@ -6,6 +6,8 @@
 //! - Virtual time advancement in simulation
 //! - Basic protocol flow (Ping request -> Pong response)
 
+use std::time::Duration;
+
 use kalandra_core::{env::Environment, transport::Transport};
 use kalandra_harness::{SimEnv, SimTransport};
 use kalandra_proto::{
@@ -63,7 +65,7 @@ fn ping_pong_basic() {
         let (mut send, mut recv) = conn.into_split();
 
         // Wait a bit (virtual time)
-        env.sleep(std::time::Duration::from_millis(10)).await;
+        env.sleep(Duration::from_millis(10)).await;
 
         // Create Ping frame
         let ping_header = FrameHeader::new(Opcode::Ping);

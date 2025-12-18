@@ -42,7 +42,7 @@
 //! - **Idle timeout**: 60 seconds without any activity
 //! - **Heartbeat interval**: 20 seconds (sends Ping to keep alive)
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use kalandra_proto::{
     Frame, FrameHeader, Opcode, Payload,
@@ -108,38 +108,23 @@ impl Default for ConnectionConfig {
 ///
 /// This is a pure state machine - no I/O, no Environment storage.
 /// Time is passed as parameters to methods that need it.
-///
-/// # Type Parameters
-///
-/// - `I`: Instant type (e.g., `std::time::Instant` or `turmoil::Instant`) Must
-///   satisfy: `Copy + Ord + Send + Sync + Sub<Output = Duration>`
 #[derive(Debug, Clone)]
-pub struct Connection<I = std::time::Instant>
-where
-    I: Copy + Ord + Send + Sync + std::ops::Sub<Output = Duration>,
-{
+pub struct Connection {
     /// Current state
     state: ConnectionState,
     /// Configuration
     config: ConnectionConfig,
     /// Last activity timestamp
-    last_activity: I,
+    last_activity: Instant,
     /// Last heartbeat sent timestamp
-    last_heartbeat: Option<I>,
+    last_heartbeat: Option<Instant>,
     /// Session ID (assigned by server)
     session_id: Option<u64>,
 }
 
-impl<I> Connection<I>
-where
-    I: Copy + Ord + Send + Sync + std::ops::Sub<Output = Duration>,
-{
+impl Connection {
     /// Create a new connection in [`ConnectionState::Init`] state
-    pub fn new<E: crate::env::Environment<Instant = I>>(
-        _env: &E,
-        now: E::Instant,
-        config: ConnectionConfig,
-    ) -> Self {
+    pub fn new(now: Instant, config: ConnectionConfig) -> Self {
         Self {
             state: ConnectionState::Init,
             config,
@@ -177,7 +162,7 @@ where
     /// # Errors
     ///
     /// Returns `InvalidState` if not in Init state
-    pub fn send_hello(&mut self, now: I) -> Result<Vec<ConnectionAction>, ConnectionError> {
+    pub fn send_hello(&mut self, now: Instant) -> Result<Vec<ConnectionAction>, ConnectionError> {
         if self.state != ConnectionState::Init {
             return Err(ConnectionError::InvalidState {
                 state: self.state,
@@ -204,11 +189,11 @@ where
     /// Returns error if:
     /// - Not in Init state
     /// - Version is unsupported
-    pub fn handle_hello<E: crate::env::Environment<Instant = I>>(
+    pub fn handle_hello<E: crate::env::Environment>(
         &mut self,
         hello: &Hello,
         env: &E,
-        now: E::Instant,
+        now: Instant,
     ) -> Result<Vec<ConnectionAction>, ConnectionError> {
         if self.state != ConnectionState::Init {
             return Err(ConnectionError::InvalidState {
@@ -247,7 +232,7 @@ where
     /// Update last activity timestamp
     ///
     /// Call this when receiving any frame from peer.
-    pub fn update_activity(&mut self, now: I) {
+    pub fn update_activity(&mut self, now: Instant) {
         self.last_activity = now;
     }
 
@@ -255,7 +240,7 @@ where
     ///
     /// Returns `Some(elapsed)` if timed out, `None` otherwise
     #[must_use]
-    pub fn check_timeout(&self, now: I) -> Option<Duration> {
+    pub fn check_timeout(&self, now: Instant) -> Option<Duration> {
         let elapsed = now - self.last_activity;
 
         let timeout = match self.state {
@@ -274,7 +259,7 @@ where
     /// - Heartbeat sending
     ///
     /// Returns actions to execute
-    pub fn tick(&mut self, now: I) -> Vec<ConnectionAction> {
+    pub fn tick(&mut self, now: Instant) -> Vec<ConnectionAction> {
         let mut actions = Vec::new();
 
         // Check for timeout
@@ -321,7 +306,7 @@ where
     pub fn handle_frame(
         &mut self,
         frame: &Frame,
-        now: I,
+        now: Instant,
     ) -> Result<Vec<ConnectionAction>, ConnectionError> {
         self.last_activity = now;
 
@@ -443,8 +428,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use super::*;
     use crate::env::Environment;
 
@@ -453,16 +436,11 @@ mod tests {
     struct TestEnv;
 
     impl crate::env::Environment for TestEnv {
-        type Instant = Instant;
-
-        fn now(&self) -> Self::Instant {
+        fn now(&self) -> Instant {
             Instant::now()
         }
 
-        fn sleep(
-            &self,
-            _duration: std::time::Duration,
-        ) -> impl std::future::Future<Output = ()> + Send {
+        fn sleep(&self, _duration: Duration) -> impl std::future::Future<Output = ()> + Send {
             async {}
         }
 
@@ -478,7 +456,7 @@ mod tests {
     fn connection_lifecycle() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Initial state
         assert_eq!(conn.state(), ConnectionState::Init);
@@ -511,7 +489,7 @@ mod tests {
     fn handle_ping_responds_with_pong() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to authenticated
         conn.send_hello(t0).unwrap();
@@ -544,7 +522,7 @@ mod tests {
     fn handle_pong_updates_activity() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to authenticated
         conn.send_hello(t0).unwrap();
@@ -574,7 +552,7 @@ mod tests {
     fn handle_ping_before_authenticated() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Create a Ping frame
         let ping_header = FrameHeader::new(kalandra_proto::Opcode::Ping);
@@ -589,7 +567,7 @@ mod tests {
     fn server_handle_hello() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Server sets session ID
         conn.set_session_id(0x1234_5678_9ABC_DEF0);
@@ -625,7 +603,7 @@ mod tests {
     fn server_hello_without_session_id() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Don't set session ID - should fail
 
@@ -640,7 +618,7 @@ mod tests {
     fn server_hello_unsupported_version() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
         conn.set_session_id(12345);
 
         let hello = Payload::Hello(Hello {
@@ -658,7 +636,7 @@ mod tests {
     fn server_generates_session_id_from_environment() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Create Hello message
         let hello = Hello { version: 1, capabilities: vec![], auth_token: None };
@@ -692,7 +670,7 @@ mod tests {
     fn handle_hello_rejects_unsupported_version() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         let hello = Hello { version: 99, capabilities: vec![], auth_token: None };
 
@@ -704,7 +682,7 @@ mod tests {
     fn handle_hello_rejects_if_not_init_state() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to Authenticated state by sending hello and receiving reply
         conn.send_hello(t0).unwrap();
@@ -728,7 +706,7 @@ mod tests {
     fn handle_goodbye_authenticated() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to authenticated
         conn.send_hello(t0).unwrap();
@@ -757,7 +735,7 @@ mod tests {
     fn handle_goodbye_pending() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to pending
         conn.send_hello(t0).unwrap();
@@ -775,7 +753,7 @@ mod tests {
     fn handle_error_frame() {
         let env = TestEnv;
         let t0 = env.now();
-        let mut conn = Connection::new(&env, t0, ConnectionConfig::default());
+        let mut conn = Connection::new(t0, ConnectionConfig::default());
 
         // Move to authenticated
         conn.send_hello(t0).unwrap();

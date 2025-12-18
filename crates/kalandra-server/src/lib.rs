@@ -282,7 +282,7 @@ async fn handle_stream(
 /// Execute server actions.
 async fn execute_actions(
     driver: &mut ServerDriver<SystemEnv, MemoryStorage>,
-    actions: Vec<ServerAction<std::time::Instant>>,
+    actions: Vec<ServerAction>,
     shared: &SharedState,
 ) -> Result<(), ServerError> {
     for action in actions {

@@ -87,7 +87,7 @@ fn connection_handshake_lifecycle() {
 
         // Create connection state machine
         let now = env.now();
-        let mut conn = Connection::new(&env, now, ConnectionConfig::default());
+        let mut conn = Connection::new(now, ConnectionConfig::default());
         assert_eq!(conn.state(), ConnectionState::Init);
 
         // Send Hello
@@ -181,7 +181,7 @@ fn connection_graceful_shutdown() {
         let (mut send, mut recv) = conn.into_split();
 
         let now = env.now();
-        let mut conn = Connection::new(&env, now, ConnectionConfig::default());
+        let mut conn = Connection::new(now, ConnectionConfig::default());
 
         // Send Goodbye
         let goodbye = Payload::Goodbye(Goodbye { reason: "client shutdown".to_string() });
