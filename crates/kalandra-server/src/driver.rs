@@ -305,8 +305,31 @@ where
                 actions.extend(sync_actions);
             },
 
+            Some(Opcode::Welcome) => {
+                let room_id = frame.header.room_id();
+                conn.update_activity(now);
+
+                self.registry.subscribe(conn_id, room_id);
+
+                actions.push(ServerAction::Log {
+                    level: LogLevel::Debug,
+                    message: format!(
+                        "session {} subscribed to room {:032x} via Welcome",
+                        conn_id, room_id
+                    ),
+                    timestamp: now,
+                });
+
+                let room_actions =
+                    self.room_manager.process_frame(frame, &self.env, &self.storage)?;
+
+                for room_action in room_actions {
+                    actions.extend(self.convert_room_action(room_action, conn_id));
+                }
+            },
+
             _ => {
-                // Room-level frames
+                // Room-level frames (Commit, Proposal, AppMessage, etc.)
                 conn.update_activity(now);
                 let room_actions =
                     self.room_manager.process_frame(frame, &self.env, &self.storage)?;
@@ -678,5 +701,47 @@ mod tests {
 
         let sessions: Vec<_> = server.sessions_in_room(room_id).collect();
         assert_eq!(sessions.len(), 1);
+    }
+
+    #[test]
+    fn welcome_frame_subscribes_receiver_to_room() {
+        use bytes::Bytes;
+        use kalandra_proto::FrameHeader;
+
+        let env = TestEnv {};
+        let storage = MemoryStorage::new();
+        let mut server = ServerDriver::new(env, storage, ServerConfig::default());
+
+        let room_id = 0x1234_5678_90ab_cdef_1234_5678_90ab_cdef;
+
+        // Accept two connections
+        server.process_event(ServerEvent::ConnectionAccepted { conn_id: 1 }).unwrap();
+        server.process_event(ServerEvent::ConnectionAccepted { conn_id: 2 }).unwrap();
+
+        // Conn 1 creates the room
+        server.create_room(room_id, 1).unwrap();
+
+        // Verify only conn 1 is subscribed
+        let sessions: Vec<_> = server.sessions_in_room(room_id).collect();
+        assert_eq!(sessions, vec![1]);
+
+        // Simulate conn 2 receiving a Welcome frame
+        // Note: The Welcome payload doesn't need to be valid MLS for this test
+        // because we're testing the subscription logic, not MLS processing.
+        // The room_manager.process_frame will fail, but subscription happens first.
+        let mut header = FrameHeader::new(Opcode::Welcome);
+        header.set_room_id(room_id);
+        let welcome_frame = Frame::new(header, Bytes::from("fake welcome"));
+
+        // Process the Welcome - it will fail MLS validation but subscription should
+        // happen
+        let _ =
+            server.process_event(ServerEvent::FrameReceived { conn_id: 2, frame: welcome_frame });
+
+        // Verify conn 2 is now subscribed (even if MLS processing failed)
+        let sessions: Vec<_> = server.sessions_in_room(room_id).collect();
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions.contains(&1));
+        assert!(sessions.contains(&2));
     }
 }
