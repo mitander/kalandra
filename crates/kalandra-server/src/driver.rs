@@ -30,7 +30,10 @@ use kalandra_core::{
     env::Environment,
     mls::MlsGroupState,
 };
-use kalandra_proto::{Frame, FrameHeader, Opcode, Payload, payloads::session::SyncResponse};
+use kalandra_proto::{
+    Frame, FrameHeader, Opcode, Payload,
+    payloads::{ErrorPayload, session::SyncResponse},
+};
 
 use crate::{
     registry::{ConnectionRegistry, SessionInfo},
@@ -297,7 +300,7 @@ where
             },
 
             Some(Opcode::SyncRequest) => {
-                let sync_actions = self.handle_sync_request(conn_id, &frame)?;
+                let sync_actions = self.handle_sync_request(conn_id, &frame);
                 actions.extend(sync_actions);
             },
 
@@ -340,31 +343,82 @@ where
     }
 
     /// Handle a sync request from a client.
-    fn handle_sync_request(
-        &mut self,
-        conn_id: u64,
-        frame: &Frame,
-    ) -> Result<Vec<ServerAction>, ServerError> {
+    fn handle_sync_request(&mut self, conn_id: u64, frame: &Frame) -> Vec<ServerAction> {
         let room_id = frame.header.room_id();
 
-        let payload = Payload::from_frame(frame.clone())?;
-        let (from_log_index, limit) = match payload {
-            Payload::SyncRequest(req) => (req.from_log_index, req.limit as usize),
-            _ => {
-                return Err(ServerError::Protocol("expected SyncRequest payload".to_string()));
+        let result = (|| -> Result<Vec<ServerAction>, ServerError> {
+            let payload = Payload::from_frame(frame.clone())?;
+            let (from_log_index, limit) = match payload {
+                Payload::SyncRequest(req) => (req.from_log_index, req.limit as usize),
+                _ => {
+                    return Err(ServerError::Protocol("expected SyncRequest payload".to_string()));
+                },
+            };
+
+            let room_action = self.room_manager.handle_sync_request(
+                room_id,
+                conn_id,
+                from_log_index,
+                limit,
+                &self.env,
+                &self.storage,
+            )?;
+
+            Ok(self.convert_room_action(room_action, conn_id))
+        })();
+
+        match result {
+            Ok(actions) => actions,
+            Err(e) => self.make_error_response(conn_id, room_id, &e),
+        }
+    }
+
+    fn make_error_response(
+        &self,
+        conn_id: u64,
+        room_id: u128,
+        error: &ServerError,
+    ) -> Vec<ServerAction> {
+        let error_payload = match error {
+            ServerError::Room(room_err) => match room_err {
+                crate::room_manager::RoomError::RoomNotFound(_) => {
+                    ErrorPayload::room_not_found(room_id)
+                },
+                crate::room_manager::RoomError::Storage(e) => {
+                    ErrorPayload::storage_error(e.to_string())
+                },
+                crate::room_manager::RoomError::MlsValidation(e) => {
+                    ErrorPayload::mls_error(e.to_string())
+                },
+                crate::room_manager::RoomError::Sequencing(e) => {
+                    ErrorPayload::sequencer_error(e.to_string())
+                },
+                _ => ErrorPayload::frame_rejected(error.to_string()),
             },
+            ServerError::Protocol(msg) => ErrorPayload::invalid_payload(msg),
+            _ => ErrorPayload::frame_rejected(error.to_string()),
         };
 
-        let room_action = self.room_manager.handle_sync_request(
-            room_id,
-            conn_id,
-            from_log_index,
-            limit,
-            &self.env,
-            &self.storage,
-        )?;
-
-        Ok(self.convert_room_action(room_action, conn_id))
+        let error_msg = error_payload.message.clone();
+        let error = Payload::Error(error_payload);
+        match error.into_frame(FrameHeader::new(Opcode::Error)) {
+            Ok(mut frame) => {
+                frame.header.set_room_id(room_id);
+                vec![
+                    ServerAction::SendToSession { session_id: conn_id, frame },
+                    ServerAction::Log {
+                        level: LogLevel::Warn,
+                        message: format!("sync request failed for {}: {}", conn_id, error_msg),
+                        timestamp: self.env.now(),
+                    },
+                ]
+            },
+            Err(e) => vec![ServerAction::Log {
+                level: LogLevel::Error,
+                message: format!("failed to encode error response: {}", e),
+                timestamp: self.env.now(),
+            }],
+        }
     }
 
     /// Handle a connection being closed.
@@ -450,11 +504,22 @@ where
             },
 
             RoomAction::Reject { sender_id, reason, processed_at } => {
-                vec![ServerAction::Log {
-                    level: LogLevel::Warn,
-                    message: format!("rejected frame from {}: {}", sender_id, reason),
-                    timestamp: processed_at,
-                }]
+                let error = Payload::Error(ErrorPayload::frame_rejected(&reason));
+                match error.into_frame(FrameHeader::new(Opcode::Error)) {
+                    Ok(frame) => vec![
+                        ServerAction::SendToSession { session_id: sender_id, frame },
+                        ServerAction::Log {
+                            level: LogLevel::Warn,
+                            message: format!("rejected frame from {}: {}", sender_id, reason),
+                            timestamp: processed_at,
+                        },
+                    ],
+                    Err(_) => vec![ServerAction::Log {
+                        level: LogLevel::Warn,
+                        message: format!("rejected frame from {}: {}", sender_id, reason),
+                        timestamp: processed_at,
+                    }],
+                }
             },
 
             RoomAction::SendSyncResponse {

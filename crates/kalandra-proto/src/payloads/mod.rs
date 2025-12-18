@@ -119,30 +119,65 @@ pub enum Payload {
     Error(ErrorPayload),
 }
 
-/// Error payload for error frames
-///
-/// Error frames are sent by the server to indicate protocol-level failures.
-/// Clients should display the `message` to users and respect `retry_after`
-/// delays.
-///
-/// # Security
-///
-/// - **No Sensitive Data**: Error messages MUST NOT contain internal server
-///   details, file paths, stack traces, or other information that could aid
-///   attackers.
-///
-/// - **Rate Limiting**: The `retry_after` field allows servers to enforce
-///   backoff policies. Clients that ignore this field may be disconnected or
-///   banned.
+/// Error payload for error frames.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ErrorPayload {
-    /// Error code
+    /// Error code identifying the type of error.
     pub code: u16,
-    /// Human-readable error message
+    /// Human-readable error message.
     pub message: String,
-    /// Optional retry-after duration in seconds
+    /// Optional retry-after duration in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<u64>,
+}
+
+impl ErrorPayload {
+    /// Frame was rejected by the server.
+    pub const FRAME_REJECTED: u16 = 0x0001;
+    /// Room does not exist.
+    pub const ROOM_NOT_FOUND: u16 = 0x0002;
+    /// Storage operation failed.
+    pub const STORAGE_ERROR: u16 = 0x0003;
+    /// Invalid payload format.
+    pub const INVALID_PAYLOAD: u16 = 0x0004;
+    /// MLS validation or operation failed.
+    pub const MLS_ERROR: u16 = 0x0005;
+    /// Sequencer error (e.g., duplicate log index).
+    pub const SEQUENCER_ERROR: u16 = 0x0006;
+
+    /// Create a frame rejection error.
+    pub fn frame_rejected(reason: impl Into<String>) -> Self {
+        Self { code: Self::FRAME_REJECTED, message: reason.into(), retry_after: None }
+    }
+
+    /// Create a room not found error.
+    pub fn room_not_found(room_id: u128) -> Self {
+        Self {
+            code: Self::ROOM_NOT_FOUND,
+            message: format!("room not found: {:032x}", room_id),
+            retry_after: None,
+        }
+    }
+
+    /// Create a storage error.
+    pub fn storage_error(msg: impl Into<String>) -> Self {
+        Self { code: Self::STORAGE_ERROR, message: msg.into(), retry_after: None }
+    }
+
+    /// Create an invalid payload error.
+    pub fn invalid_payload(msg: impl Into<String>) -> Self {
+        Self { code: Self::INVALID_PAYLOAD, message: msg.into(), retry_after: None }
+    }
+
+    /// Create an MLS error.
+    pub fn mls_error(msg: impl Into<String>) -> Self {
+        Self { code: Self::MLS_ERROR, message: msg.into(), retry_after: None }
+    }
+
+    /// Create a sequencer error.
+    pub fn sequencer_error(msg: impl Into<String>) -> Self {
+        Self { code: Self::SEQUENCER_ERROR, message: msg.into(), retry_after: None }
+    }
 }
 
 impl Payload {
