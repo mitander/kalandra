@@ -67,7 +67,7 @@ pub struct FrameHeader {
     sender_id: [u8; 8], // u64 sender identifier
 
     // Ordering context (16 bytes: 40-55)
-    log_index: [u8; 8],     // u64 sequence number
+    log_index: [u8; 8],     // u64 sequence number OR recipient_id (Welcome only)
     hlc_timestamp: [u8; 8], // u64 hybrid logical clock
 
     // MLS binding (8 bytes: 56-63)
@@ -228,9 +228,22 @@ impl FrameHeader {
         u64::from_be_bytes(self.sender_id)
     }
 
-    /// Get the log index
+    /// Get the log index (sequence number).
+    ///
+    /// For `Opcode::Welcome` frames, use `recipient_id()` instead - the
+    /// log_index field is reused to store the recipient for routing.
     #[must_use]
     pub fn log_index(&self) -> u64 {
+        u64::from_be_bytes(self.log_index)
+    }
+
+    /// Get the recipient ID for Welcome frames.
+    ///
+    /// For `Opcode::Welcome`, the log_index field is reused to store the
+    /// recipient's member ID for server-side routing. For other opcodes,
+    /// this returns the same value as `log_index()`.
+    #[must_use]
+    pub fn recipient_id(&self) -> u64 {
         u64::from_be_bytes(self.log_index)
     }
 
@@ -265,12 +278,21 @@ impl FrameHeader {
         self.room_id = room_id.to_be_bytes();
     }
 
-    /// Set the log index (for server sequencing)
+    /// Set the log index (for server sequencing).
     ///
     /// This method is used by the sequencer to assign monotonic log indices
     /// to frames after validation.
     pub fn set_log_index(&mut self, log_index: u64) {
         self.log_index = log_index.to_be_bytes();
+    }
+
+    /// Set the recipient ID for Welcome frames.
+    ///
+    /// For `Opcode::Welcome`, the log_index field is reused to store the
+    /// recipient's member ID. The server uses this to route the Welcome
+    /// to the correct session.
+    pub fn set_recipient_id(&mut self, recipient_id: u64) {
+        self.log_index = recipient_id.to_be_bytes();
     }
 
     /// Set the sender ID

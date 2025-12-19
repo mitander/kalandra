@@ -738,12 +738,14 @@ impl<E: Environment> MlsGroup<E> {
             .tls_serialize_detached()
             .map_err(|e| MlsError::Serialization(format!("Failed to serialize welcome: {}", e)))?;
 
-        let welcome_frame =
-            Frame { header: FrameHeader::new(Opcode::Welcome), payload: welcome_payload.into() };
-
         for kp in &key_packages {
             let recipient = extract_member_id_from_credential(kp.leaf_node().credential())?;
-            actions.push(MlsAction::SendWelcome { recipient, frame: welcome_frame.clone() });
+            let mut header = FrameHeader::new(Opcode::Welcome);
+            header.set_recipient_id(recipient);
+            header.set_room_id(self.room_id);
+            header.set_sender_id(self.member_id);
+            let frame = Frame { header, payload: welcome_payload.clone().into() };
+            actions.push(MlsAction::SendWelcome { recipient, frame });
         }
 
         actions.push(MlsAction::Log {
@@ -1035,9 +1037,6 @@ mod tests {
     }
 
     /// Test that add_members returns the correct recipient in SendWelcome.
-    ///
-    /// This test exposes the bug where recipient is hardcoded to 0 in
-    /// SendWelcome.
     #[test]
     fn add_members_returns_correct_welcome_recipient() {
         let env = TestEnv;
@@ -1059,20 +1058,18 @@ mod tests {
             alice_group.add_members_from_bytes(&[bob_kp_bytes]).expect("alice add bob");
 
         // Find the Welcome action
-        let welcome_recipient = add_actions
+        let (welcome_recipient, welcome_frame) = add_actions
             .iter()
             .find_map(|a| match a {
-                MlsAction::SendWelcome { recipient, .. } => Some(*recipient),
+                MlsAction::SendWelcome { recipient, frame } => Some((*recipient, frame.clone())),
                 _ => None,
             })
             .expect("should have SendWelcome action");
 
-        // ORACLE: SendWelcome.recipient should be Bob's member_id (100), not 0
-        assert_eq!(
-            welcome_recipient, bob_id,
-            "Welcome recipient should be Bob's member_id ({}), not {}",
-            bob_id, welcome_recipient
-        );
+        assert_eq!(welcome_recipient, bob_id);
+        assert_eq!(welcome_frame.header.recipient_id(), bob_id);
+        assert_eq!(welcome_frame.header.room_id(), room_id);
+        assert_eq!(welcome_frame.header.sender_id(), alice_id);
     }
 
     /// Test that remove_members produces a Commit and removes the correct
