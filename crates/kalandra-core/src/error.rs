@@ -7,14 +7,17 @@
 //! We avoid using `std::io::Error` for protocol logic to maintain type safety
 //! and enable proper error handling and recovery.
 
-use std::{fmt, io, time::Duration};
+use std::{io, time::Duration};
+
+use thiserror::Error;
 
 use crate::connection::ConnectionState;
 
 /// Errors that can occur during connection state machine operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionError {
     /// Invalid state transition attempted
+    #[error("invalid state transition: cannot {operation} from {state:?}")]
     InvalidState {
         /// Current state when error occurred
         state: ConnectionState,
@@ -23,6 +26,7 @@ pub enum ConnectionError {
     },
 
     /// Received unexpected frame for current state
+    #[error("unexpected frame: received opcode {opcode:#06x} in state {state:?}")]
     UnexpectedFrame {
         /// Current state when frame was received
         state: ConnectionState,
@@ -31,21 +35,25 @@ pub enum ConnectionError {
     },
 
     /// Handshake did not complete within timeout
+    #[error("handshake timeout after {elapsed:?}")]
     HandshakeTimeout {
         /// How long we waited
         elapsed: Duration,
     },
 
     /// Connection idle timeout exceeded
+    #[error("idle timeout after {elapsed:?}")]
     IdleTimeout {
         /// How long connection was idle
         elapsed: Duration,
     },
 
     /// Unsupported protocol version
+    #[error("unsupported protocol version: {0}")]
     UnsupportedVersion(u8),
 
     /// Invalid payload for opcode
+    #[error("invalid payload: expected {expected} for opcode {opcode:#06x}")]
     InvalidPayload {
         /// Expected payload type
         expected: &'static str,
@@ -54,40 +62,13 @@ pub enum ConnectionError {
     },
 
     /// Protocol error from frame parsing/validation
+    #[error("protocol error: {0}")]
     Protocol(String),
 
     /// Underlying transport error
+    #[error("transport error: {0}")]
     Transport(String),
 }
-
-impl fmt::Display for ConnectionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidState { state, operation } => {
-                write!(f, "invalid state transition: cannot {} from {:?}", operation, state)
-            },
-            Self::UnexpectedFrame { state, opcode } => {
-                write!(f, "unexpected frame: received opcode {:#06x} in state {:?}", opcode, state)
-            },
-            Self::HandshakeTimeout { elapsed } => {
-                write!(f, "handshake timeout after {:?}", elapsed)
-            },
-            Self::IdleTimeout { elapsed } => {
-                write!(f, "idle timeout after {:?}", elapsed)
-            },
-            Self::UnsupportedVersion(version) => {
-                write!(f, "unsupported protocol version: {}", version)
-            },
-            Self::InvalidPayload { expected, opcode } => {
-                write!(f, "invalid payload: expected {} for opcode {:#06x}", expected, opcode)
-            },
-            Self::Protocol(msg) => write!(f, "protocol error: {}", msg),
-            Self::Transport(msg) => write!(f, "transport error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for ConnectionError {}
 
 impl ConnectionError {
     /// Returns true if this error is transient and may succeed on retry.
