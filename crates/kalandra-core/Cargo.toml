@@ -26,7 +26,7 @@ thiserror = "2.0"
 # Structured logging
 tracing = "0.1"
 
-# MLS (Messaging Layer Security) - OpenMLS for synchronous Sans-IO API
+# MLS (Messaging Layer Security)
 openmls = { version = "0.7", features = ["test-utils"] }
 openmls_traits = "0.4"
 openmls_rust_crypto = "0.4"

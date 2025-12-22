@@ -1,6 +1,6 @@
 //! Client events and actions.
 //!
-//! The client uses an event/action model for Sans-IO operation:
+//! The client uses an event/action model for action-based operation:
 //! - Events are fed into the client by the caller
 //! - Actions are produced by the client for the caller to execute
 
@@ -81,7 +81,7 @@ pub struct RoomStateSnapshot {
 
 /// Actions the client produces for the caller to execute.
 ///
-/// Sans-IO: the client produces actions, the caller handles I/O.
+/// Action-based design: the client produces actions, the caller handles I/O.
 #[derive(Debug, Clone)]
 pub enum ClientAction {
     /// Send a frame to the server.

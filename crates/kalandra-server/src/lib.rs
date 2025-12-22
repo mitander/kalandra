@@ -11,7 +11,7 @@
 //! kalandra-server
 //!   ├─ SystemEnv          (production Environment impl)
 //!   ├─ QuinnTransport     (QUIC via Quinn)
-//!   ├─ ServerDriver       (Sans-IO orchestrator)
+//!   ├─ ServerDriver       (action-based orchestrator)
 //!   ├─ RoomManager        (MLS validation + sequencing)
 //!   ├─ Sequencer          (total ordering)
 //!   └─ Storage            (frame persistence)
@@ -84,7 +84,7 @@ impl Default for ServerRuntimeConfig {
 ///
 /// Wraps `ServerDriver` with Quinn QUIC transport and system environment.
 pub struct Server {
-    /// The Sans-IO server driver
+    /// The action-based server driver
     driver: ServerDriver<SystemEnv, MemoryStorage>,
     /// QUIC endpoint
     transport: QuinnTransport,

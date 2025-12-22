@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! SimServer
-//!   ├─ ServerDriver<SimEnv, MemoryStorage>  (Sans-IO core)
+//!   ├─ ServerDriver<SimEnv, MemoryStorage>  (action-based core)
 //!   ├─ TcpListener                          (turmoil TCP)
 //!   └─ connections: HashMap<u64, connection state>
 //! ```
@@ -48,7 +48,7 @@ struct SimConnectionState {
 /// This server is designed for test-driven usage where tests explicitly
 /// drive the server rather than having it run autonomously.
 pub struct SimServer {
-    /// The Sans-IO server driver
+    /// The action-based server driver
     driver: ServerDriver<SimEnv, MemoryStorage>,
     /// TCP listener for accepting connections
     listener: TcpListener,

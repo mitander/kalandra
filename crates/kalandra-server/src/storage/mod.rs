@@ -1,7 +1,8 @@
 //! Storage abstraction for Kalandra protocol
 //!
 //! This module provides a trait-based abstraction for persisting frames and MLS
-//! state. The trait is synchronous (no async) to maintain Sans-IO compliance.
+//! state. The trait is synchronous (no async) to maintain a clean synchronous
+//! API design.
 
 mod chaotic;
 mod error;
@@ -18,7 +19,7 @@ pub use memory::MemoryStorage;
 /// This trait must be:
 /// - Clone: Can be passed to multiple state machines
 /// - Send + Sync: Thread-safe for concurrent access
-/// - Synchronous: No async methods (Sans-IO compliance)
+/// - Synchronous: No async methods (clean API design)
 ///
 /// # Clone Semantics
 ///
@@ -37,8 +38,8 @@ pub trait Storage: Clone + Send + Sync + 'static {
     ///
     /// # Invariants
     ///
-    /// - **Pre**: `log_index` must equal the current length of the room's log
-    /// - **Post**: Frame is persisted at `log_index`
+    /// - Pre: `log_index` must equal the current length of the room's log
+    /// - Post: Frame is persisted at `log_index`
     ///
     /// # Errors
     ///

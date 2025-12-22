@@ -1,6 +1,6 @@
 //! OpenMLS provider integration with Kalandra's Environment abstraction.
 //!
-//! This module bridges OpenMLS's provider pattern with our Sans-IO
+//! This module bridges OpenMLS's provider pattern with our deterministic
 //! Environment trait, enabling deterministic testing with Turmoil.
 
 use openmls_memory_storage::MemoryStorage;

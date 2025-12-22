@@ -2,29 +2,18 @@
 //!
 //! Orchestrates MLS validation and frame sequencing for rooms.
 //!
-//! ## Architecture
-//!
-//! ```text
-//! Server
-//!   ├─ Connections (session layer)
-//!   ├─ RoomManager (group layer) ← THIS MODULE
-//!   │   ├─ MlsGroups (per-room MLS state)
-//!   │   └─ Sequencer (total ordering)
-//!   └─ Storage (persistence)
-//! ```
-//!
 //! ## Responsibilities
 //!
-//! 1. **Room Lifecycle**: Create rooms with authorization metadata
-//! 2. **MLS Validation**: Verify frames against group state before sequencing
-//! 3. **Frame Sequencing**: Assign log indices for total ordering
-//! 4. **Action Generation**: Return actions for driver to execute (Sans-IO)
+//! - Room Lifecycle: Create rooms with authorization metadata
+//! - MLS Validation: Verify frames against group state before sequencing
+//! - Frame Sequencing: Assign log indices for total ordering
+//! - Action Generation: Return actions for driver to execute (action-based)
 //!
-//! ## Design Decisions
+//! ## Design
 //!
-//! - **Explicit room creation**: Prevents accidental rooms, enables future auth
-//! - **RoomMetadata**: Extension point for permissions/roles (added later)
-//! - **Sans-IO**: All methods return actions, no direct I/O
+//! - Explicit room creation: Prevents accidental rooms, enables future auth
+//! - RoomMetadata: Extension point for permissions/roles (added later)
+//! - Action-based: All methods return actions, no direct I/O
 
 use std::collections::HashMap;
 

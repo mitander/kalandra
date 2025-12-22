@@ -6,7 +6,7 @@
 //!
 //! # Architecture
 //!
-//! - Sans-IO: Returns actions instead of performing I/O directly
+//! - Action-based: Returns actions instead of performing I/O directly
 //! - Deterministic: Same input frames → same log_index assignment
 //! - Stateful: Maintains next_log_index per room (cached from Storage)
 //!

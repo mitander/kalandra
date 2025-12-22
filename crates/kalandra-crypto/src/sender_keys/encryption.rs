@@ -1,7 +1,7 @@
 //! Message encryption using `XChaCha20-Poly1305`
 //!
 //! All functions are pure - random bytes must be provided by the caller.
-//! This enables deterministic testing and maintains sans-IO compatibility.
+//! This enables deterministic testing and maintains action-based compatibility.
 
 use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Sans-IO client state machine for Kalandra protocol"
+description = "Action-based client state machine for Kalandra protocol"
 
 [dependencies]
 kalandra-core = { path = "../kalandra-core" }

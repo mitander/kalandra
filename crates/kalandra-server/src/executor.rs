@@ -1,7 +1,7 @@
 //! Action executor trait for server I/O.
 //!
-//! The executor trait separates action generation (Sans-IO) from I/O execution.
-//! Different implementations handle I/O differently:
+//! The executor trait separates action generation (action-based design) from
+//! I/O execution. Different implementations handle I/O differently:
 //! - Simulation: Routes through SimTransport with virtual time
 //! - Production: Uses Quinn/tokio for real network I/O
 //!

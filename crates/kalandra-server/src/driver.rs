@@ -1,4 +1,4 @@
-//! Server driver - Sans-IO orchestrator for the server.
+//! Server driver - action-based orchestrator for the server.
 //!
 //! The ServerDriver ties together the core components:
 //! - Connection state machines (session layer)
@@ -161,7 +161,7 @@ pub enum LogLevel {
     Error,
 }
 
-/// Sans-IO server driver.
+/// Action-based server driver.
 ///
 /// Orchestrates connection management, room operations, and frame routing.
 /// All methods return actions rather than performing I/O directly.

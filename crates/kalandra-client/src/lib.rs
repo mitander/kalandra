@@ -1,6 +1,6 @@
 //! Kalandra Client
 //!
-//! Sans-IO client state machine for the Kalandra protocol. Manages room
+//! Action-based client state machine for the Kalandra protocol. Manages room
 //! memberships, MLS group operations, and sender key encryption.
 //!
 //! # Architecture
