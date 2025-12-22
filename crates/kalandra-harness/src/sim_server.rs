@@ -18,7 +18,6 @@ use std::{
     sync::Arc,
 };
 
-use bytes::BytesMut;
 use kalandra_proto::Frame;
 use kalandra_server::{
     DriverConfig, LogLevel, MemoryStorage, ServerAction, ServerDriver, ServerEvent, Storage,
@@ -35,9 +34,6 @@ use crate::SimEnv;
 struct SimConnectionState {
     /// Write half for sending frames
     writer: WriteHalf<TcpStream>,
-    /// Read buffer for incoming data
-    #[allow(dead_code)]
-    read_buffer: BytesMut,
 }
 
 /// Simulation server for testing with turmoil.
@@ -101,8 +97,7 @@ impl SimServer {
             .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))?;
 
         let (_reader, writer) = tokio::io::split(stream);
-        self.connections
-            .insert(conn_id, SimConnectionState { writer, read_buffer: BytesMut::new() });
+        self.connections.insert(conn_id, SimConnectionState { writer });
 
         // Execute actions
         self.execute_actions(actions).await?;
