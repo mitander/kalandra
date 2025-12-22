@@ -1,5 +1,5 @@
 [package]
-name = "kalandra-fuzz"
+name = "lockframe-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -11,8 +11,8 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 # Crates to fuzz
-kalandra-proto = { path = "../crates/kalandra-proto" }
-kalandra-core = { path = "../crates/kalandra-core" }
+lockframe-proto = { path = "../crates/lockframe-proto" }
+lockframe-core = { path = "../crates/lockframe-core" }
 
 # Dependencies needed for fuzzing
 bytes = "1.11"

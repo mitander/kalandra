@@ -1,4 +1,4 @@
-# Kalandra Server Implementation Guide
+# Lockframe Server Implementation Guide
 
 ## 1. Server Architecture
 
@@ -394,7 +394,7 @@ impl Sequencer {
         // Create frame
         let payload = commit.encode();
         let mut header = FrameHeader {
-            magic: 0x53554E44u32.to_be(),
+            magic: 0x4C4F4652u32.to_be(),  // "LOFR" in Big Endian
             version: 0x01,
             flags: FrameFlags::EXTERNAL.bits(),
             opcode: Opcode::ExternalCommit as u16,
@@ -785,16 +785,16 @@ impl RoomAuthority {
 /// Metrics collection
 lazy_static! {
     static ref MESSAGES_SENT: IntCounter =
-        register_int_counter!("kalandra_messages_sent_total", "Total messages sent").unwrap();
+        register_int_counter!("lockframe_messages_sent_total", "Total messages sent").unwrap();
 
     static ref COMMITS_PROCESSED: Histogram =
-        register_histogram!("kalandra_commit_duration_seconds", "Commit processing time").unwrap();
+        register_histogram!("lockframe_commit_duration_seconds", "Commit processing time").unwrap();
 
     static ref ACTIVE_CONNECTIONS: IntGauge =
-        register_int_gauge!("kalandra_connections_active", "Active connections").unwrap();
+        register_int_gauge!("lockframe_connections_active", "Active connections").unwrap();
 
     static ref ROOM_MEMBERS: IntGaugeVec =
-        register_int_gauge_vec!("kalandra_room_members", "Members per room", &["room"]).unwrap();
+        register_int_gauge_vec!("lockframe_room_members", "Members per room", &["room"]).unwrap();
 }
 
 /// Instrument critical paths
@@ -850,25 +850,25 @@ async fn health_check() -> HealthStatus {
 
 ```ini
 [Unit]
-Description=Kalandra Server
+Description=Lockframe Server
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/kalandrad --config /etc/kalandra/config.toml
+ExecStart=/usr/bin/lockframed --config /etc/lockframe/config.toml
 ExecReload=/bin/kill -USR1 $MAINPID
 Restart=on-failure
 RestartSec=5s
 
 # Security
-User=kalandra
-Group=kalandra
+User=lockframe
+Group=lockframe
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 NoNewPrivileges=true
-ReadWritePaths=/var/lib/kalandra
+ReadWritePaths=/var/lib/lockframe
 
 # Resource limits
 LimitNOFILE=65536
@@ -883,7 +883,7 @@ WantedBy=multi-user.target
 ### 8.2 Configuration File
 
 ```toml
-# /etc/kalandra/config.toml
+# /etc/lockframe/config.toml
 
 [server]
 bind = "[::]:8443"
@@ -892,11 +892,11 @@ max_connections = 10000
 max_rooms = 5000
 
 [tls]
-cert_path = "/etc/kalandra/cert.pem"
-key_path = "/etc/kalandra/key.pem"
+cert_path = "/etc/lockframe/cert.pem"
+key_path = "/etc/lockframe/key.pem"
 
 [database]
-path = "/var/lib/kalandra/data.redb"
+path = "/var/lib/lockframe/data.redb"
 cache_size_mb = 512
 sync_mode = "normal"  # normal|fast|paranoid
 

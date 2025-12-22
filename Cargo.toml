@@ -70,7 +70,7 @@ panic = "abort"
 inherits = "release"
 
 [package]
-name = "kalandra-workspace"
+name = "lockframe-workspace"
 version = "0.1.0"
 edition = "2024"
 publish = false

@@ -447,12 +447,12 @@ impl MLSEngine {
         );
 
         // 3. Configure Group
-        // NOTE: The MLS cipher suite must match the Kalandra cipher suite chosen
+        // NOTE: The MLS cipher suite must match the Lockframe cipher suite chosen
         // For Suite 0x0003 (Performance), use X25519-based MLS suite
         // For Suite 0x0004 (FIPS), use P-384-based MLS suite
         let config = MlsGroupConfig::builder()
             .crypto_config(CryptoConfig::with_default_version(
-                // This maps to Kalandra Suite 0x0003 (Performance)
+                // This maps to Lockframe Suite 0x0003 (Performance)
                 CipherSuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519
             ))
             .use_ratchet_tree_extension(true)
@@ -514,7 +514,7 @@ fn derive_sender_keys(
 
         // Export from MLS (64 bytes: 32 for encryption + 32 for authentication)
         let key_material = epoch_secrets.export_secret(
-            "kalandraSenderV1",
+            "lockframeSenderV1",
             &context.encode(),
             64,
         )?;

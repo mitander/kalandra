@@ -15,9 +15,9 @@
 #![no_main]
 
 use bytes::Bytes;
-use kalandra_core::{mls::MlsValidator, sequencer::Sequencer, storage::MemoryStorage};
-use kalandra_proto::{Frame, FrameHeader, Opcode};
 use libfuzzer_sys::fuzz_target;
+use lockframe_core::{mls::MlsValidator, sequencer::Sequencer, storage::MemoryStorage};
+use lockframe_proto::{Frame, FrameHeader, Opcode};
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 128 {

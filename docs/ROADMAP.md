@@ -10,26 +10,26 @@ Establish CI/CD, monorepo structure, deterministic simulation harness.
 
 ```rust
 // Workspace structure
-kalandra/
+lockframe/
 ├── Cargo.toml          // Workspace root
 ├── crates/
-│   ├── kalandra-proto/   // Wire protocol types
-│   ├── kalandra-server/  // Server implementation
+│   ├── lockframe-proto/   // Wire protocol types
+│   ├── lockframe-server/  // Server implementation
 │   ├── client-core/    // Client library
-│   └── kalandra-harness/ // Simulation harness
+│   └── lockframe-harness/ // Simulation harness
 └── tests/
     └── simulation/     // Deterministic tests
 ```
 
 ### Implementation Tasks
 
-1. **Wire Protocol Types** [`kalandra-proto`]
+1. **Wire Protocol Types** [`lockframe-proto`]
 
 ```rust
 // Core types with zero-copy design
 #[repr(C, packed)]
 pub struct FrameHeader {
-   magic: u32,           // 0x53554E44 ("SUND")
+   magic: u32,           // 0x4C4F4652 ("LOFR")
    version: u8,          // 0x01
    flags: u8,
    opcode: u16,
@@ -55,7 +55,7 @@ impl Frame {
 }
 ```
 
-2. **Simulation Harness** [`kalandra-harness`]
+2. **Simulation Harness** [`lockframe-harness`]
 
 ```rust
 #[test]
@@ -162,7 +162,7 @@ Sender key derivation and message encryption.
 fn derive_sender_key(epoch_secret: &[u8; 32]) -> SenderKey {
    let mut kdf = Hkdf::<Sha256>::new(None, epoch_secret);
    let mut key = [0u8; 32];
-   kdf.expand(b"kalandraSenderV1", &mut key).unwrap();
+   kdf.expand(b"lockframeSenderV1", &mut key).unwrap();
    SenderKey(key)
 }
 ```

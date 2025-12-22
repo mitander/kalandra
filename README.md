@@ -1,4 +1,4 @@
-# kalandra
+# lockframe
 
 A high-assurance messaging protocol combining **End-to-End Encryption** with **Server-Side Moderation**.
 

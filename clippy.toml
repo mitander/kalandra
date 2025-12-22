@@ -40,7 +40,7 @@ allow-print-in-tests = true
 
 # Documentation requirements
 doc-valid-idents = [
-    "Kalandra",
+    "Lockframe",
 ]
 
 # Standard library functions that should be avoided

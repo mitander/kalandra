@@ -1,0 +1,30 @@
+//! Lockframe protocol core logic
+//!
+//! This crate contains the pure state machine logic for the Lockframe protocol.
+//! It is completely decoupled from I/O, enabling deterministic testing and
+//! formal verification.
+//!
+//! # Key Principles
+//!
+//! - No I/O in Core: Never call `tokio::spawn`, `std::time::Instant::now()`, or
+//!   `rand::thread_rng()` directly
+//! - Environment Trait: All side effects go through the `Environment` trait
+//! - Deterministic: Given the same inputs and environment state, produce the
+//!   same outputs
+//!
+//! # Modules
+//!
+//! - [`connection`]: Connection state machine (handshake, heartbeat, timeout)
+//! - [`mls`]: MLS group state machine (proposals, commits, messages)
+//! - [`env`]: Environment abstraction (time, RNG)
+//! - [`transport`]: Transport abstraction (streams)
+//! - [`error`]: Connection error types
+
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
+pub mod connection;
+pub mod env;
+pub mod error;
+pub mod mls;
+pub mod transport;

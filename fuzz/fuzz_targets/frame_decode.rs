@@ -10,8 +10,8 @@
 
 #![no_main]
 
-use kalandra_proto::Frame;
 use libfuzzer_sys::fuzz_target;
+use lockframe_proto::Frame;
 
 fuzz_target!(|data: &[u8]| {
     // Attempt to decode arbitrary bytes as a frame

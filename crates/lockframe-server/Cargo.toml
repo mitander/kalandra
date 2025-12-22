@@ -1,0 +1,61 @@
+[package]
+name = "lockframe-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Lockframe protocol server with QUIC transport"
+
+[[bin]]
+name = "lockframe-server"
+path = "src/main.rs"
+
+[dependencies]
+# Core protocol logic
+lockframe-core = { path = "../lockframe-core" }
+lockframe-proto = { path = "../lockframe-proto" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# QUIC transport
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+rcgen = "0.13"
+
+# Buffer management
+bytes = "1.9"
+
+# Zero-copy parsing
+zerocopy = "0.8"
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI arguments
+clap = { version = "4", features = ["derive"] }
+
+# Cryptographic randomness
+getrandom = "0.3"
+
+[dev-dependencies]
+# Testing utilities
+tempfile = "3"
+
+# Property-based testing
+proptest = "1.5"
+
+# RNG for tests
+rand = "0.8"
+rand_chacha = "0.3"
+
+# Cryptographic signatures for testing
+ed25519-dalek = { version = "2.1", features = ["serde"] }
+
+[lints]
+workspace = true

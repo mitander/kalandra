@@ -1,8 +1,8 @@
-# Kalandra Architecture Document
+# Lockframe Architecture Document
 
 ## Executive Summary
 
-Kalandra is a authorative messaging protocol that combines cryptographic rigor with operational pragmatism. Unlike Matrix's eventual consistency model or Signal's client-heavy architecture, Kalandra employs a "hub-centric design" where servers actively participate in group management through MLS External Commits while maintaining end-to-end encryption guarantees.
+Lockframe is a authorative messaging protocol that combines cryptographic rigor with operational pragmatism. Unlike Matrix's eventual consistency model or Signal's client-heavy architecture, Lockframe employs a "hub-centric design" where servers actively participate in group management through MLS External Commits while maintaining end-to-end encryption guarantees.
 
 The architecture prioritizes:
 
@@ -56,7 +56,7 @@ The solution is to separate concerns:
 The planes are cryptographically bound:
 
 ```
-SenderKeySeed = MLS.Export("kalandraSenderKeyV1", context, 32)
+SenderKeySeed = MLS.Export("lockframeSenderKeyV1", context, 32)
 ```
 
 This provides:
@@ -293,7 +293,7 @@ This provides:
 
 #### Cryptographic Enforcement
 
-Traditional moderation relies on policy (IP bans, account suspension). Kalandra uses cryptography:
+Traditional moderation relies on policy (IP bans, account suspension). Lockframe uses cryptography:
 
 ```rust
 // Server-initiated removal
@@ -548,7 +548,7 @@ fn rebuild_state(log: &[Frame]) -> MLSState {
 
 ## 8. Comparison with Alternatives
 
-| Feature               | Kalandra               | Matrix         | Signal          | WhatsApp        |
+| Feature               | Lockframe              | Matrix         | Signal          | WhatsApp        |
 | --------------------- | ---------------------- | -------------- | --------------- | --------------- |
 | Protocol              | MLS (RFC 9420)         | Megolm         | Signal Protocol | Signal Protocol |
 | Group Size            | 10,000+                | 1,000          | 1,000           | 1,024           |

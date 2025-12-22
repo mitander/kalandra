@@ -1,0 +1,25 @@
+[package]
+name = "lockframe-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Action-based client state machine for Lockframe protocol"
+
+[dependencies]
+lockframe-core = { path = "../lockframe-core" }
+lockframe-crypto = { path = "../lockframe-crypto" }
+lockframe-proto = { path = "../lockframe-proto" }
+
+# CBOR serialization
+ciborium = "0.2"
+
+# Error handling
+thiserror = "2.0"
+
+[dev-dependencies]
+# Property-based testing
+proptest = "1.5"
+
+[lints]
+workspace = true

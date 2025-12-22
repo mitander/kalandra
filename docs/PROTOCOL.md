@@ -1,4 +1,4 @@
-# Kalandra Protocol Specification
+# Lockframe Protocol Specification
 
 **Wire Format:** Raw Binary Header (Big Endian) + CBOR Payload
 **Cryptography:** MLS (RFC 9420) + XChaCha20-Poly1305
@@ -8,7 +8,7 @@
 
 ## 1. Protocol Overview
 
-Kalandra implements a deterministic, authorative messaging protocol combining MLS group management with sender-key message encryption. Every operation is cryptographically enforced and forensically auditable.
+Lockframe implements a deterministic, authorative messaging protocol combining MLS group management with sender-key message encryption. Every operation is cryptographically enforced and forensically auditable.
 
 ### 1.0 Wire Format Philosophy
 
@@ -81,7 +81,7 @@ Every packet follows this exact structure:
 #[derive(Clone, Copy)]
 struct FrameHeader {
     // Protocol identification (8 bytes: 0-7)
-    magic: u32,                      // MUST be 0x53554E44 ("SUND" in ASCII)
+    magic: u32,                      // MUST be 0x4C4F4652 ("LOFR" in ASCII)
     version: u8,                     // MUST be 0x01 (version 1)
     flags: u8,                       // Feature flags (see 2.2)
     opcode: u16,                     // Operation code (see 2.3)
@@ -132,7 +132,7 @@ impl FrameHeader {
         let header = unsafe { Self::from_bytes_unchecked(bytes) };
 
         // Validate magic number
-        if u32::from_be(header.magic) != 0x53554E44 {
+        if u32::from_be(header.magic) != 0x4C4F4652 {
             return Err(Error::InvalidMagic);
         }
 
@@ -346,7 +346,7 @@ enum Opcode {
 
 ### 3.1 Cipher Suites
 
-Kalandra supports two cipher suites for different deployment contexts:
+Lockframe supports two cipher suites for different deployment contexts:
 
 #### Suite 0x0003 (Performance - Default)
 
@@ -404,7 +404,7 @@ fn derive_sender_key(
 
     // Create deterministic context
     let mut context = Vec::with_capacity(16);
-    context.extend_from_slice(b"kalandraSenderV1");
+    context.extend_from_slice(b"lockframeSenderV1");
     context.extend_from_slice(&epoch.to_be_bytes());
     context.extend_from_slice(&sender_index.to_be_bytes());
 
@@ -528,7 +528,7 @@ fn encrypt_message(
 
 ### 3.4 MLS Extensions
 
-Kalandra defines custom extensions to the MLS KeyPackage (RFC 9420 §12.1).
+Lockframe defines custom extensions to the MLS KeyPackage (RFC 9420 §12.1).
 
 #### Notification Key Extension (ID: 0x000A)
 
@@ -842,7 +842,7 @@ async fn send_message(
     // 4. Create frame header
     let payload = encrypted.encode();
     let mut header = FrameHeader {
-        magic: 0x53554E44u32.to_be(),  // "SUND" in Big Endian
+        magic: 0x4C4F4652u32.to_be(),  // "LOFR" in Big Endian
         version: 0x01,
         flags: FrameFlags::empty().bits(),
         opcode: Opcode::AppMessage as u16,
@@ -926,7 +926,7 @@ async fn kick_member(
     // 3. Create frame
     let payload = commit.encode();
     let mut header = FrameHeader {
-        magic: 0x53554E44u32.to_be(),
+        magic: 0x4C4F4652u32.to_be(),  // "LOFR" in Big Endian
         version: 0x01,
         flags: FrameFlags::EXTERNAL.bits(),
         opcode: Opcode::ExternalCommit as u16,

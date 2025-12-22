@@ -11,8 +11,8 @@
 
 #![no_main]
 
-use kalandra_proto::{Frame, FrameHeader, Opcode};
 use libfuzzer_sys::fuzz_target;
+use lockframe_proto::{Frame, FrameHeader, Opcode};
 
 // All opcodes to test exhaustively
 const ALL_OPCODES: &[Opcode] = &[

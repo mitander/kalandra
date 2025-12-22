@@ -14,7 +14,7 @@ target
 **/mutants.out*/
 
 # Development
-.kalandra
+.lockframe
 *.log
 CLAUDE.md
 AGENTS.md

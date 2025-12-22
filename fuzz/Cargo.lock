@@ -647,14 +647,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "kalandra-core"
+name = "lockframe-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "bincode",
  "bytes",
  "ciborium",
- "kalandra-proto",
+ "lockframe-proto",
  "openmls",
  "openmls_basic_credential",
  "openmls_memory_storage",
@@ -668,17 +668,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "kalandra-fuzz"
+name = "lockframe-fuzz"
 version = "0.0.0"
 dependencies = [
  "bytes",
- "kalandra-core",
- "kalandra-proto",
+ "lockframe-core",
+ "lockframe-proto",
  "libfuzzer-sys",
 ]
 
 [[package]]
-name = "kalandra-proto"
+name = "lockframe-proto"
 version = "0.1.0"
 dependencies = [
  "bitflags",
