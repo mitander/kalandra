@@ -1,8 +1,11 @@
 //! Room Manager tests
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
+// Generate signature key for the creator
 use bytes::Bytes;
+use ed25519_dalek::{Signer, SigningKey};
+use kalandra_core::{env::Environment, mls::MlsGroupState};
 use kalandra_proto::{Frame, FrameHeader, Opcode};
 use kalandra_server::{MemoryStorage, RoomAction, RoomError, RoomManager, Storage};
 
@@ -10,7 +13,7 @@ use kalandra_server::{MemoryStorage, RoomAction, RoomError, RoomManager, Storage
 #[derive(Clone)]
 struct TestEnv;
 
-impl kalandra_core::env::Environment for TestEnv {
+impl Environment for TestEnv {
     fn now(&self) -> std::time::Instant {
         std::time::Instant::now()
     }
@@ -186,9 +189,14 @@ fn process_frame_rejects_wrong_epoch() {
     // Create room (epoch 0)
     manager.create_room(room_id, creator, &env).unwrap();
 
-    // Store initial MLS state at epoch 0
-    use kalandra_core::mls::MlsGroupState;
-    let mls_state = MlsGroupState::new(room_id, 0, [0u8; 32], vec![creator], vec![]);
+    // Store initial MLS state at epoch 0 with signature keys
+    let signing_key = SigningKey::generate(&mut rand::thread_rng());
+    let verifying_key = signing_key.verifying_key();
+    let mut member_keys = HashMap::new();
+    member_keys.insert(creator, verifying_key.to_bytes());
+
+    let mls_state =
+        MlsGroupState::with_keys(room_id, 0, [0u8; 32], vec![creator], member_keys, vec![]);
     storage.store_mls_state(room_id, &mls_state).unwrap();
 
     // Create frame with wrong epoch (epoch 5, but room is at epoch 0)
@@ -196,10 +204,18 @@ fn process_frame_rejects_wrong_epoch() {
     header.set_room_id(room_id);
     header.set_sender_id(creator);
     header.set_epoch(5); // Wrong epoch!
+
+    // Create and sign the frame properly
     let frame = Frame::new(header, Bytes::new());
+    let signing_data = frame.header.signing_data();
+    let signature = signing_key.sign(&signing_data);
+
+    let mut signed_header = frame.header;
+    signed_header.set_signature(signature.to_bytes());
+    let frame = Frame::new(signed_header, frame.payload.clone());
 
     let result = manager.process_frame(frame, &env, &storage);
-    assert!(matches!(result, Err(RoomError::MlsValidation(_))));
+    assert!(matches!(result, Err(RoomError::InvalidEpoch { expected: 0, actual: 5 })));
 }
 
 /// Test that RoomManager advances epoch after processing a Commit.
@@ -222,8 +238,13 @@ fn process_commit_advances_epoch() {
     assert_eq!(manager.epoch(room_id), Some(0), "Room should start at epoch 0");
 
     // Step 2: Store initial MLS state for validation
-    use kalandra_core::mls::MlsGroupState;
-    let mls_state = MlsGroupState::new(room_id, 0, [0u8; 32], vec![creator], vec![]);
+    let signing_key = SigningKey::generate(&mut rand::thread_rng());
+    let verifying_key = signing_key.verifying_key();
+    let mut member_keys = HashMap::new();
+    member_keys.insert(creator, verifying_key.to_bytes());
+
+    let mls_state =
+        MlsGroupState::with_keys(room_id, 0, [0u8; 32], vec![creator], member_keys, vec![]);
     storage.store_mls_state(room_id, &mls_state).unwrap();
 
     // Step 3: Generate a KeyPackage for a new member
@@ -254,9 +275,24 @@ fn process_commit_advances_epoch() {
     header.set_room_id(room_id);
     header.set_sender_id(creator);
     header.set_epoch(0); // Commit is sent at current epoch
+
+    // Create the frame first so payload_size is set correctly
     let commit_frame = Frame::new(header, commit_frame.payload);
 
+    // Sign the frame header (application messages require signature validation)
+    // Use the centralized signing data method to get the bytes that should be
+    // signed
+    let signing_data = commit_frame.header.signing_data();
+    let signature = signing_key.sign(&signing_data);
+
+    let mut signed_header = commit_frame.header;
+    signed_header.set_signature(signature.to_bytes());
+    let commit_frame = Frame::new(signed_header, commit_frame.payload.clone());
+
     let result = manager.process_frame(commit_frame, &env, &storage);
+    if let Err(ref e) = result {
+        println!("process_frame failed with error: {:?}", e);
+    }
     assert!(result.is_ok(), "process_frame should succeed");
 
     // CRITICAL ORACLE: Epoch should advance to 1 after processing the commit
@@ -267,7 +303,21 @@ fn process_commit_advances_epoch() {
     );
 
     // Step 6: Update MLS state in storage to reflect new epoch
-    let mls_state = MlsGroupState::new(room_id, 1, [0u8; 32], vec![creator, new_member_id], vec![]);
+    // Generate signature key for the new member
+    let new_signing_key = SigningKey::generate(&mut rand::thread_rng());
+    let new_verifying_key = new_signing_key.verifying_key();
+    let mut updated_member_keys = HashMap::new();
+    updated_member_keys.insert(creator, verifying_key.to_bytes());
+    updated_member_keys.insert(new_member_id, new_verifying_key.to_bytes());
+
+    let mls_state = MlsGroupState::with_keys(
+        room_id,
+        1,
+        [0u8; 32],
+        vec![creator, new_member_id],
+        updated_member_keys,
+        vec![],
+    );
     storage.store_mls_state(room_id, &mls_state).unwrap();
 
     // Step 7: Send a message at epoch 1 - should be accepted
@@ -275,7 +325,19 @@ fn process_commit_advances_epoch() {
     header.set_room_id(room_id);
     header.set_sender_id(creator);
     header.set_epoch(1); // New epoch after commit
+
+    // Create the frame first so payload_size is set correctly
     let msg_frame = Frame::new(header, Bytes::from("message at epoch 1"));
+
+    // Sign the frame header (application messages require signature validation)
+    // Use the centralized signing data method to get the bytes that should be
+    // signed
+    let signing_data = msg_frame.header.signing_data();
+    let signature = signing_key.sign(&signing_data);
+
+    let mut signed_header = msg_frame.header;
+    signed_header.set_signature(signature.to_bytes());
+    let msg_frame = Frame::new(signed_header, msg_frame.payload.clone());
 
     let result = manager.process_frame(msg_frame, &env, &storage);
 

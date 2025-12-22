@@ -283,7 +283,19 @@ impl FrameHeader {
         &self.signature
     }
 
-    // Setter methods (for server sequencing and testing)
+    /// Get the data that should be signed by clients
+    ///
+    /// This method returns exactly the bytes that should be signed, excluding
+    /// server-modified fields like context_id (log_index) and the signature
+    /// itself. The signing scope is bytes 0-39 + 48-63 (56 bytes total).
+    #[must_use]
+    pub fn signing_data(&self) -> [u8; 56] {
+        let bytes = self.to_bytes();
+        let mut data = [0u8; 56];
+        data[..40].copy_from_slice(&bytes[..40]); // Bytes 0-39
+        data[40..56].copy_from_slice(&bytes[48..64]); // Bytes 48-63
+        data
+    }
 
     /// Set the room ID
     pub fn set_room_id(&mut self, room_id: u128) {

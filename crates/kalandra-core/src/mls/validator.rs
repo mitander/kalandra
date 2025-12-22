@@ -67,6 +67,24 @@ impl MlsValidator {
 
         debug_assert!(group_state.is_member(sender_id));
 
+        // Delegate to signature-only validation
+        Self::validate_signature(frame, group_state)
+    }
+
+    /// Validate only the signature of a frame.
+    ///
+    /// Use this when epoch and membership have already been validated
+    /// (e.g., after sequencing when the frame has been modified).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MlsError` if signature validation encounters an internal error.
+    pub fn validate_signature(
+        frame: &Frame,
+        group_state: &MlsGroupState,
+    ) -> Result<ValidationResult, MlsError> {
+        let sender_id = frame.header.sender_id();
+
         let verifying_key = match group_state.member_key(sender_id) {
             Some(key) => key,
             None => {
@@ -90,10 +108,8 @@ impl MlsValidator {
             },
         };
 
-        let header_bytes = frame.header.to_bytes();
-        let signed_data = &header_bytes[..64];
-
-        if verifying_key.verify(signed_data, &signature).is_err() {
+        let signed_data = frame.header.signing_data();
+        if verifying_key.verify(&signed_data, &signature).is_err() {
             return Ok(ValidationResult::Reject {
                 reason: format!("signature verification failed for sender {}", sender_id),
             });
@@ -172,10 +188,9 @@ mod tests {
         header.set_epoch(epoch);
         header.set_room_id(100);
 
-        let header_bytes = header.to_bytes();
-        let signed_data = &header_bytes[..64];
+        let signed_data = header.signing_data();
         let signature =
-            signing_keys.get(&sender_id).expect("sender must be in members").sign(signed_data);
+            signing_keys.get(&sender_id).expect("sender must be in members").sign(&signed_data);
 
         header.set_signature(signature.to_bytes());
         let frame = Frame::new(header, Bytes::new());
@@ -270,9 +285,8 @@ mod tests {
             header.set_epoch(epoch);
             header.set_room_id(100);
 
-            let header_bytes = header.to_bytes();
-            let signed_data = &header_bytes[..64];
-            let signature = signing_keys.get(&sender).unwrap().sign(signed_data);
+            let signed_data = header.signing_data();
+            let signature = signing_keys.get(&sender).unwrap().sign(&signed_data);
 
             header.set_signature(signature.to_bytes());
             let frame = Frame::new(header, Bytes::new());
@@ -317,12 +331,9 @@ mod tests {
         header.set_epoch(5);
         header.set_room_id(100);
 
-        // Get header bytes and sign the first 64 bytes
-        let header_bytes = header.to_bytes();
-        let signed_data = &header_bytes[..64];
-        let signature = signing_key.sign(signed_data);
-
         // Set the signature in the header
+        let signed_data = header.signing_data();
+        let signature = signing_key.sign(&signed_data);
         let mut signed_header = header;
         signed_header.set_signature(signature.to_bytes());
 
@@ -389,6 +400,49 @@ mod tests {
             ValidationResult::Accept => {
                 panic!("Expected rejection when member key is missing")
             },
+        }
+    }
+
+    #[test]
+    fn test_validate_signature_only() {
+        // Test that validate_signature works independently of epoch/membership checks
+        let (frame, state) = create_signed_frame_and_state(100, 5, vec![100]);
+
+        // validate_signature doesn't check epoch, so we can pass a frame at any epoch
+        let result = MlsValidator::validate_signature(&frame, &state).expect("validation failed");
+        assert_eq!(result, ValidationResult::Accept);
+    }
+
+    #[test]
+    fn test_validate_signature_rejects_invalid() {
+        // Generate two different key pairs
+        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let wrong_verifying_key = SigningKey::generate(&mut rand::thread_rng()).verifying_key();
+
+        // Create and sign a frame
+        let mut header = FrameHeader::new(Opcode::AppMessage);
+        header.set_sender_id(100);
+        header.set_epoch(5);
+        header.set_room_id(100);
+
+        let signed_data = header.signing_data();
+        let signature = signing_key.sign(&signed_data);
+        header.set_signature(signature.to_bytes());
+
+        let frame = Frame::new(header, Bytes::new());
+
+        // State has the wrong key
+        let mut member_keys = HashMap::new();
+        member_keys.insert(100, wrong_verifying_key.to_bytes());
+        let state = MlsGroupState::with_keys(100, 5, [0u8; 32], vec![100], member_keys, vec![]);
+
+        let result = MlsValidator::validate_signature(&frame, &state).expect("validation failed");
+
+        match result {
+            ValidationResult::Reject { reason } => {
+                assert!(reason.contains("signature verification failed"));
+            },
+            ValidationResult::Accept => panic!("Expected rejection for invalid signature"),
         }
     }
 }

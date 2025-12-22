@@ -54,5 +54,8 @@ proptest = "1.5"
 rand = "0.8"
 rand_chacha = "0.3"
 
+# Cryptographic signatures for testing
+ed25519-dalek = { version = "2.1", features = ["serde"] }
+
 [lints]
 workspace = true
