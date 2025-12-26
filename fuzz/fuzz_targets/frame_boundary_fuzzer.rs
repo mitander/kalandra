@@ -52,7 +52,7 @@ enum VersionBytes {
     Valid,
     Zero,
     Max,
-    Random(u16),
+    Random(u8),
 }
 
 #[derive(Debug, Clone, Arbitrary)]
@@ -118,15 +118,15 @@ fuzz_target!(|boundary: BoundaryFrame| {
         MagicBytes::Random(bytes) => buffer[0..4].copy_from_slice(&bytes),
     }
 
-    let version_value = match boundary.version {
-        VersionBytes::Valid => 0x01u16,
+    let version_value: u8 = match boundary.version {
+        VersionBytes::Valid => 0x01,
         VersionBytes::Zero => 0,
-        VersionBytes::Max => u16::MAX,
+        VersionBytes::Max => u8::MAX,
         VersionBytes::Random(v) => v,
     };
-    buffer[4..6].copy_from_slice(&version_value.to_le_bytes());
-    buffer[6..8].copy_from_slice(&boundary.opcode.to_le_bytes());
-    buffer[8..12].copy_from_slice(&payload_size_value.to_le_bytes());
+    buffer[4] = version_value;
+    buffer[6..8].copy_from_slice(&boundary.opcode.to_be_bytes());
+    buffer[12..16].copy_from_slice(&payload_size_value.to_be_bytes());
 
     let room_id_value = match boundary.room_id {
         RoomId::Zero => 0,
@@ -135,7 +135,7 @@ fuzz_target!(|boundary: BoundaryFrame| {
         RoomId::MaxU128 => u128::MAX,
         RoomId::Random(r) => r,
     };
-    buffer[12..28].copy_from_slice(&room_id_value.to_le_bytes());
+    buffer[16..32].copy_from_slice(&room_id_value.to_be_bytes());
 
     let sender_id_value = match boundary.sender_id {
         SenderId::Zero => 0,
@@ -143,7 +143,7 @@ fuzz_target!(|boundary: BoundaryFrame| {
         SenderId::MaxU64 => u64::MAX,
         SenderId::Random(r) => r,
     };
-    buffer[28..36].copy_from_slice(&sender_id_value.to_le_bytes());
+    buffer[32..40].copy_from_slice(&sender_id_value.to_be_bytes());
 
     let epoch_value = match boundary.epoch {
         EpochValue::Zero => 0,
@@ -152,8 +152,8 @@ fuzz_target!(|boundary: BoundaryFrame| {
         EpochValue::MaxU64 => u64::MAX,
         EpochValue::Random(r) => r,
     };
-    buffer[36..44].copy_from_slice(&epoch_value.to_le_bytes());
-    buffer[44..52].copy_from_slice(&boundary.log_index.to_le_bytes());
+    buffer[56..64].copy_from_slice(&epoch_value.to_be_bytes());
+    buffer[40..48].copy_from_slice(&boundary.log_index.to_be_bytes());
 
     match Frame::decode(&buffer) {
         Ok(frame) => {
@@ -167,11 +167,13 @@ fuzz_target!(|boundary: BoundaryFrame| {
                 );
             }
 
-            let _ = frame.header.opcode();
+            let opcode = frame.header.opcode_enum();
             let _ = frame.header.room_id();
             let _ = frame.header.sender_id();
             let _ = frame.header.epoch();
-            let _ = frame.header.log_index();
+            if opcode != Some(Opcode::Welcome) {
+                let _ = frame.header.log_index();
+            }
             let _ = frame.header.payload_size();
             let _ = frame.header.signature();
         }
@@ -179,6 +181,9 @@ fuzz_target!(|boundary: BoundaryFrame| {
     }
 
     if let Some(opcode_enum) = Opcode::from_u16(boundary.opcode) {
+        if opcode_enum == Opcode::Welcome {
+            return;
+        }
         let mut header = FrameHeader::new(opcode_enum);
         header.set_room_id(room_id_value);
         header.set_sender_id(sender_id_value);
