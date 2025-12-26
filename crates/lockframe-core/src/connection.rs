@@ -19,7 +19,10 @@
 //!                   └────────┘                      └────────┘
 //! ```
 
-use std::time::{Duration, Instant};
+use std::{
+    ops::Sub,
+    time::{Duration, Instant},
+};
 
 use lockframe_proto::{
     Frame, FrameHeader, Opcode, Payload,
@@ -94,23 +97,32 @@ impl Default for ConnectionConfig {
 ///
 /// This is a pure state machine - no I/O, no Environment storage.
 /// Time is passed as parameters to methods that need it.
+///
+/// Generic over `Instant` to support both real time and virtual time for
+/// deterministic testing.
 #[derive(Debug, Clone)]
-pub struct Connection {
+pub struct Connection<I = Instant>
+where
+    I: Copy + Ord + Send + Sync + Sub<Output = Duration>,
+{
     /// Current state
     state: ConnectionState,
     /// Configuration
     config: ConnectionConfig,
     /// Last activity timestamp
-    last_activity: Instant,
+    last_activity: I,
     /// Last heartbeat sent timestamp
-    last_heartbeat: Option<Instant>,
+    last_heartbeat: Option<I>,
     /// Session ID (assigned by server)
     session_id: Option<u64>,
 }
 
-impl Connection {
+impl<I> Connection<I>
+where
+    I: Copy + Ord + Send + Sync + Sub<Output = Duration>,
+{
     /// Create a new connection in [`ConnectionState::Init`] state
-    pub fn new(now: Instant, config: ConnectionConfig) -> Self {
+    pub fn new(now: I, config: ConnectionConfig) -> Self {
         Self {
             state: ConnectionState::Init,
             config,
@@ -154,7 +166,7 @@ impl Connection {
     /// # Errors
     ///
     /// - `ConnectionError::InvalidState` if not in Init state
-    pub fn send_hello(&mut self, now: Instant) -> Result<Vec<ConnectionAction>, ConnectionError> {
+    pub fn send_hello(&mut self, now: I) -> Result<Vec<ConnectionAction>, ConnectionError> {
         if self.state != ConnectionState::Init {
             return Err(ConnectionError::InvalidState {
                 state: self.state,
@@ -183,7 +195,7 @@ impl Connection {
         &mut self,
         hello: &Hello,
         env: &E,
-        now: Instant,
+        now: I,
     ) -> Result<Vec<ConnectionAction>, ConnectionError> {
         if self.state != ConnectionState::Init {
             return Err(ConnectionError::InvalidState {
@@ -217,13 +229,13 @@ impl Connection {
     }
 
     /// Mark connection as active (call when receiving frames).
-    pub fn update_activity(&mut self, now: Instant) {
+    pub fn update_activity(&mut self, now: I) {
         self.last_activity = now;
     }
 
     /// Elapsed time since last activity, if timeout exceeded. `None` otherwise.
     #[must_use]
-    pub fn check_timeout(&self, now: Instant) -> Option<Duration> {
+    pub fn check_timeout(&self, now: I) -> Option<Duration> {
         let elapsed = now - self.last_activity;
 
         let timeout = match self.state {
@@ -239,7 +251,7 @@ impl Connection {
     ///
     /// Call this periodically to trigger timeout detection and heartbeat
     /// sending.
-    pub fn tick(&mut self, now: Instant) -> Vec<ConnectionAction> {
+    pub fn tick(&mut self, now: I) -> Vec<ConnectionAction> {
         let mut actions = Vec::new();
 
         // Check for timeout
@@ -288,7 +300,7 @@ impl Connection {
     pub fn handle_frame(
         &mut self,
         frame: &Frame,
-        now: Instant,
+        now: I,
     ) -> Result<Vec<ConnectionAction>, ConnectionError> {
         self.last_activity = now;
 

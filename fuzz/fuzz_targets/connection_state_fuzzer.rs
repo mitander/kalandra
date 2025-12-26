@@ -1,10 +1,11 @@
-//! Fuzz target for Connection state machine
+//! Fuzz target for [`Connection`] state machine
 //!
-//! Prevent authentication bypass via invalid state transitions (CRITICAL security boundary)
+//! Prevent authentication bypass via invalid state transitions
 //!
 //! # Strategy
 //!
-//! - Event sequences: Arbitrary sequences of frames, ticks, and close operations
+//! - Event sequences: Arbitrary sequences of frames, ticks, and close
+//!   operations
 //! - Invalid opcodes: Unexpected frame types for current state
 //! - Timeout testing: Advance time to trigger handshake/idle timeouts
 //! - State probing: Out-of-order handshakes, duplicate hellos
@@ -22,7 +23,7 @@
 
 #![no_main]
 
-use std::time::{Duration, Instant};
+use std::{ops::Sub, time::Duration};
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
@@ -31,6 +32,18 @@ use lockframe_proto::{
     payloads::session::{Goodbye, Hello, HelloReply},
     Frame, FrameHeader, Opcode, Payload,
 };
+
+/// Represents time as Duration since epoch 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct FuzzInstant(Duration);
+
+impl Sub for FuzzInstant {
+    type Output = Duration;
+
+    fn sub(self, other: Self) -> Duration {
+        self.0.saturating_sub(other.0)
+    }
+}
 
 #[derive(Debug, Clone, Arbitrary)]
 enum ConnectionEvent {
@@ -58,20 +71,29 @@ enum FuzzedPayload {
     RandomBytes(Vec<u8>),
 }
 
-fuzz_target!(|events: Vec<ConnectionEvent>| {
+/// Fuzz input with deterministic seed for time initialization.
+#[derive(Debug, Clone, Arbitrary)]
+struct FuzzInput {
+    /// Seed for deterministic initial time (seconds since epoch 0).
+    initial_time_secs: u32,
+    /// Event sequence to process.
+    events: Vec<ConnectionEvent>,
+}
+
+fuzz_target!(|input: FuzzInput| {
     let config = ConnectionConfig {
         handshake_timeout: Duration::from_secs(5),
         idle_timeout: Duration::from_secs(10),
         heartbeat_interval: Duration::from_secs(3),
     };
 
-    let initial_time = Instant::now();
-    let mut conn = Connection::new(initial_time, config);
+    let initial_time = FuzzInstant(Duration::from_secs(input.initial_time_secs as u64));
+    let mut conn: Connection<FuzzInstant> = Connection::new(initial_time, config);
     let mut current_time = initial_time;
     let mut previous_state;
     let mut initial_session_id: Option<u64> = None;
 
-    for event in events {
+    for event in input.events {
         previous_state = conn.state();
 
         match event {
@@ -81,12 +103,12 @@ fuzz_target!(|events: Vec<ConnectionEvent>| {
                 match previous_state {
                     ConnectionState::Init if result.is_ok() => {
                         assert_eq!(conn.state(), ConnectionState::Pending);
-                    }
+                    },
                     _ => {
                         assert!(result.is_err() || conn.state() == previous_state);
-                    }
+                    },
                 }
-            }
+            },
 
             ConnectionEvent::ReceiveFrame(fuzzed) => {
                 let frame = create_frame_from_fuzzed(&fuzzed);
@@ -117,21 +139,22 @@ fuzz_target!(|events: Vec<ConnectionEvent>| {
                         for action in actions {
                             match action {
                                 ConnectionAction::SendFrame(_) | ConnectionAction::Close { .. } => {
-                                }
+                                },
                             }
                         }
-                    }
+                    },
                     Err(_) => {
                         assert!(
                             conn.state() == previous_state
                                 || conn.state() == ConnectionState::Closed
                         );
-                    }
+                    },
                 }
-            }
+            },
 
             ConnectionEvent::Tick { advance_secs } => {
-                current_time += Duration::from_secs((advance_secs % 120) as u64);
+                current_time =
+                    FuzzInstant(current_time.0 + Duration::from_secs((advance_secs % 120) as u64));
                 let actions = conn.tick(current_time);
 
                 for action in actions {
@@ -139,17 +162,18 @@ fuzz_target!(|events: Vec<ConnectionEvent>| {
                         assert_eq!(conn.state(), ConnectionState::Closed);
                     }
                 }
-            }
+            },
 
             ConnectionEvent::Close => {
                 conn.close();
                 assert_eq!(conn.state(), ConnectionState::Closed);
-            }
+            },
 
             ConnectionEvent::CheckTimeout { advance_secs } => {
-                let check_time = current_time + Duration::from_secs((advance_secs % 120) as u64);
+                let check_time =
+                    FuzzInstant(current_time.0 + Duration::from_secs((advance_secs % 120) as u64));
                 let _ = conn.check_timeout(check_time);
-            }
+            },
         }
 
         if conn.state() == ConnectionState::Authenticated {
@@ -184,7 +208,7 @@ fn create_frame_from_fuzzed(fuzzed: &FuzzedFrame) -> Frame {
             hello
                 .into_frame(FrameHeader::new(Opcode::Hello))
                 .unwrap_or_else(|_| Frame::new(FrameHeader::new(Opcode::Hello), Vec::new()))
-        }
+        },
         FuzzedPayload::HelloReply { session_id } => {
             let reply = Payload::HelloReply(HelloReply {
                 session_id: *session_id,
@@ -194,7 +218,7 @@ fn create_frame_from_fuzzed(fuzzed: &FuzzedFrame) -> Frame {
             reply
                 .into_frame(FrameHeader::new(Opcode::HelloReply))
                 .unwrap_or_else(|_| Frame::new(FrameHeader::new(Opcode::HelloReply), Vec::new()))
-        }
+        },
         FuzzedPayload::Ping => Frame::new(FrameHeader::new(Opcode::Ping), Vec::new()),
         FuzzedPayload::Pong => Frame::new(FrameHeader::new(Opcode::Pong), Vec::new()),
         FuzzedPayload::Goodbye { reason_len } => {
@@ -203,11 +227,11 @@ fn create_frame_from_fuzzed(fuzzed: &FuzzedFrame) -> Frame {
             goodbye
                 .into_frame(FrameHeader::new(Opcode::Goodbye))
                 .unwrap_or_else(|_| Frame::new(FrameHeader::new(Opcode::Goodbye), Vec::new()))
-        }
+        },
         FuzzedPayload::Error => Frame::new(FrameHeader::new(Opcode::Error), Vec::new()),
         FuzzedPayload::RandomBytes(bytes) => {
             let opcode = opcode_enum.unwrap_or(Opcode::AppMessage);
             Frame::new(FrameHeader::new(opcode), bytes.clone())
-        }
+        },
     }
 }
