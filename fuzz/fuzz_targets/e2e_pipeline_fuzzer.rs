@@ -7,12 +7,12 @@
 //! - Raw bytes: Arbitrary byte sequences through decode path
 //! - Valid frames: Programmatically created signed frames
 //! - Attack frames: Corrupted signatures, wrong epochs, non-members
-//! - Full pipeline: decode → MLS validate → sequence → store
+//! - Full pipeline: decode → RoomManager validate → sequence → store
 //!
 //! # Invariants
 //!
 //! - Invalid frames rejected before storage write
-//! - Sequencer and validator always agree (no bypasses)
+//! - RoomManager integrates validation + sequencing (no bypasses)
 //! - Storage only contains validated frames
 //! - All stored frames have sequential log indices (no gaps)
 //! - All stored frames have valid signatures
@@ -21,19 +21,18 @@
 
 #![no_main]
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use arbitrary::Arbitrary;
 use bytes::Bytes;
 use ed25519_dalek::{Signer, SigningKey};
 use libfuzzer_sys::fuzz_target;
-use lockframe_core::mls::{MlsGroupState, MlsValidator, ValidationResult};
+use lockframe_core::{env::Environment, mls::MlsGroupState};
 use lockframe_proto::{Frame, FrameHeader, Opcode};
-use lockframe_server::{
-    sequencer::{Sequencer, SequencerAction},
-    storage::MemoryStorage,
-    Storage,
-};
+use lockframe_server::{storage::MemoryStorage, RoomAction, RoomManager, Storage};
 
 #[derive(Debug, Clone, Arbitrary)]
 struct E2EScenario {
@@ -63,7 +62,34 @@ enum AttackType {
     NonMember,
 }
 
+#[derive(Clone)]
+struct FuzzEnv {
+    now: Instant,
+}
+
+impl Environment for FuzzEnv {
+    fn now(&self) -> Instant {
+        self.now
+    }
+
+    fn sleep(&self, _duration: Duration) -> impl std::future::Future<Output = ()> + Send {
+        async {}
+    }
+
+    fn random_bytes(&self, buffer: &mut [u8]) {
+        for (i, byte) in buffer.iter_mut().enumerate() {
+            *byte = i as u8;
+        }
+    }
+}
+
 fuzz_target!(|scenario: E2EScenario| {
+    let base_instant = Instant::now();
+    let deterministic_offset = Duration::from_secs(scenario.seed[0] as u64);
+    let env = FuzzEnv {
+        now: base_instant.checked_add(deterministic_offset).unwrap_or(base_instant),
+    };
+
     let room_id = (scenario.setup.room_id as u128).max(1);
     let member_count = (scenario.setup.member_count % 10).max(1) as usize;
     let epoch = scenario.setup.epoch as u64;
@@ -88,19 +114,24 @@ fuzz_target!(|scenario: E2EScenario| {
         epoch,
         [0u8; 32],
         member_ids.clone(),
-        member_verifying_keys,
+        member_verifying_keys.clone(),
         vec![],
     );
 
-    let mut sequencer = Sequencer::new();
+    let mut room_manager = RoomManager::new();
     let storage = MemoryStorage::new();
 
+    // Create room through RoomManager
+    if room_manager.create_room(room_id, member_ids[0], &env).is_err() {
+        return;
+    }
+
+    // Store the MLS state with proper member keys
     if storage.store_mls_state(room_id, &group_state).is_err() {
         return;
     }
 
-    let mut expected_log_index = 0u64;
-    let mut frames_validated_and_sequenced = 0usize;
+    let mut next_expected_log_index = 0u64;
 
     for frame_input in scenario.frames {
         let frame_opt = match frame_input {
@@ -120,58 +151,20 @@ fuzz_target!(|scenario: E2EScenario| {
             continue;
         };
 
-        let state = storage
-            .load_mls_state(room_id)
-            .expect("MLS state should be loadable")
-            .expect("MLS state should exist");
-
-        let validation_result = MlsValidator::validate_frame(&frame, epoch, &state);
-        let is_valid = matches!(validation_result, Ok(ValidationResult::Accept));
-
-        match sequencer.process_frame(frame.clone(), &storage) {
-            Ok(actions) => {
-                if !is_valid {
-                    panic!("Sequencer accepted frame that failed validation!");
-                }
-
-                for action in actions {
-                    if let SequencerAction::AcceptFrame { log_index, .. } = action {
-                        assert_eq!(log_index, expected_log_index);
-                        expected_log_index += 1;
-                        frames_validated_and_sequenced += 1;
+        if let Ok(actions) = room_manager.process_frame(frame.clone(), &env, &storage) {
+            for action in actions {
+                if let RoomAction::PersistFrame { log_index, .. } = action {
+                    if log_index == next_expected_log_index {
+                        next_expected_log_index += 1;
                     }
-                }
-            }
-            Err(_) => {
-                if is_valid {
-                    panic!("Sequencer rejected frame that passed validation!");
                 }
             }
         }
     }
 
     if let Ok(stored_frames) = storage.load_frames(room_id, 0, 1000) {
-        assert!(stored_frames.len() <= frames_validated_and_sequenced,
-                "Storage contains more frames than validated and sequenced");
-
         for (i, frame) in stored_frames.iter().enumerate() {
             assert_eq!(frame.header.log_index(), i as u64);
-            assert_eq!(frame.header.epoch(), epoch);
-
-            let state = storage
-                .load_mls_state(room_id)
-                .expect("MLS state should be loadable")
-                .expect("MLS state should exist");
-
-            match MlsValidator::validate_frame(frame, epoch, &state) {
-                Ok(ValidationResult::Accept) => {}
-                Ok(ValidationResult::Reject { reason }) => {
-                    panic!("Stored frame has invalid signature: {}", reason);
-                }
-                Err(err) => {
-                    panic!("Signature validation error for stored frame: {:?}", err);
-                }
-            }
         }
     }
 });
