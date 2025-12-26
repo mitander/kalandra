@@ -9,40 +9,60 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+arbitrary = { version = "1.4", features = ["derive"] }
 
-# Crates to fuzz
 lockframe-server = { path = "../crates/lockframe-server" }
 lockframe-proto = { path = "../crates/lockframe-proto" }
 lockframe-core = { path = "../crates/lockframe-core" }
 
-# Dependencies needed for fuzzing
 bytes = "1.11"
+ed25519-dalek = "2"
 
-# Fuzz targets
 [[bin]]
-name = "frame_decode"
-path = "fuzz_targets/frame_decode.rs"
+name = "mls_signature_fuzzer"
+path = "fuzz_targets/mls_signature_fuzzer.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "sequencer_invalid"
-path = "fuzz_targets/sequencer_invalid.rs"
+name = "connection_state_fuzzer"
+path = "fuzz_targets/connection_state_fuzzer.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "payload_decode"
-path = "fuzz_targets/payload_decode.rs"
+name = "frame_boundary_fuzzer"
+path = "fuzz_targets/frame_boundary_fuzzer.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "frame_exhaustive"
-path = "fuzz_targets/frame_exhaustive.rs"
+name = "room_manager_fuzzer"
+path = "fuzz_targets/room_manager_fuzzer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sequencer_state_fuzzer"
+path = "fuzz_targets/sequencer_state_fuzzer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cbor_attack_fuzzer"
+path = "fuzz_targets/cbor_attack_fuzzer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "e2e_pipeline_fuzzer"
+path = "fuzz_targets/e2e_pipeline_fuzzer.rs"
 test = false
 doc = false
 bench = false
