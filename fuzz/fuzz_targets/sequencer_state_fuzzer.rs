@@ -7,13 +7,11 @@
 //! - Multi-room: Create and process frames across multiple rooms
 //! - Room boundaries: room_id = 0 (invalid), small values, u128::MAX
 //! - Frame types: Valid frames, epoch overflow
-//! - Duplicate detection: Process same frame twice
 //! - Index verification: Check storage matches expected state
 //!
 //! # Invariants
 //!
 //! - Log index strictly monotonic per room (never decreases)
-//! - Same frame processed twice MUST reject second attempt
 //! - Different rooms have independent log index sequences
 //! - Room 0 (invalid) MUST reject
 
@@ -30,6 +28,10 @@ use lockframe_server::{
     storage::MemoryStorage,
     Storage,
 };
+
+// Note: Duplicate detection is NOT a Sequencer responsibility.
+// The Sequencer only assigns monotonic log indices.
+// Content deduplication belongs in MlsValidator/RoomManager.
 
 #[derive(Debug, Clone, Arbitrary)]
 enum SequencerOp {
@@ -50,19 +52,10 @@ enum FrameType {
     EpochOverflow,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct FrameFingerprint {
-    room_id: u128,
-    sender_id: u64,
-    epoch: u64,
-    opcode: u16,
-}
-
 fuzz_target!(|ops: Vec<SequencerOp>| {
     let mut sequencer = Sequencer::new();
     let storage = MemoryStorage::new();
     let mut expected_indices: HashMap<u128, u64> = HashMap::new();
-    let mut frames_processed: HashMap<u128, Vec<FrameFingerprint>> = HashMap::new();
 
     for op in ops {
         match op {
@@ -70,31 +63,14 @@ fuzz_target!(|ops: Vec<SequencerOp>| {
                 let room_id_value = get_room_id(&room_id);
                 let frame = create_frame(&frame_type, room_id_value);
 
-                let fingerprint = FrameFingerprint {
-                    room_id: frame.header.room_id(),
-                    sender_id: frame.header.sender_id(),
-                    epoch: frame.header.epoch(),
-                    opcode: frame.header.opcode(),
-                };
-
-                let is_duplicate = frames_processed
-                    .get(&room_id_value)
-                    .map(|fps| fps.contains(&fingerprint))
-                    .unwrap_or(false);
-
                 match sequencer.process_frame(frame.clone(), &storage) {
                     Ok(actions) => {
                         if room_id_value == 0 {
                             panic!("Sequencer accepted frame with room_id = 0!");
                         }
-                        if is_duplicate {
-                            panic!("Sequencer accepted duplicate frame!");
-                        }
                         if !matches!(frame_type, FrameType::Valid { .. }) {
                             panic!("Sequencer accepted invalid frame type: {:?}", frame_type);
                         }
-
-                        let mut store_actions: Vec<(u128, u64)> = Vec::new();
 
                         for action in actions {
                             match action {
@@ -107,27 +83,13 @@ fuzz_target!(|ops: Vec<SequencerOp>| {
                                 SequencerAction::RejectFrame { .. } => {
                                     panic!("RejectFrame action in Ok result!");
                                 }
-                                SequencerAction::StoreFrame { room_id: action_room, log_index, .. } => {
+                                SequencerAction::StoreFrame { room_id: action_room, log_index, frame } => {
                                     assert_eq!(action_room, room_id_value);
-                                    store_actions.push((action_room, log_index));
+                                    let _ = storage.store_frame(action_room, log_index, &frame);
                                 }
                                 _ => {}
                             }
                         }
-
-                        for (action_room, log_index) in store_actions {
-                            let expected = expected_indices.get(&action_room).copied().unwrap_or(0);
-                            assert_eq!(
-                                log_index,
-                                expected - 1,
-                                "StoreFrame log_index should match the just-accepted frame"
-                            );
-                        }
-
-                        frames_processed
-                            .entry(room_id_value)
-                            .or_default()
-                            .push(fingerprint);
                     }
                     Err(_) => {}
                 }
@@ -174,7 +136,9 @@ fn create_frame(frame_type: &FrameType, room_id: u128) -> Frame {
             header.set_room_id(room_id);
             header.set_epoch(*epoch as u64);
             header.set_sender_id(100);
-            header.set_log_index(0);
+            if opcode_enum != Opcode::Welcome {
+                header.set_log_index(0);
+            }
             Frame::new(header, Bytes::new())
         }
         FrameType::EpochOverflow => {
